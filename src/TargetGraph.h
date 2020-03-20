@@ -29,12 +29,19 @@
 /* The adjacency list of a vertex v is composed by nodes of type node. Each node of the list corresponds to an arc and contains a neighbour w of v and the address of the next node in the list. A link is a pointer to a node. */
 typedef struct targetNode *targetLink;
 
+	/* ADJACENCY LIST REPRESENTATION: the function GRAPHinsertArc() inserts an arc v-w in graph G. The function supposes that v and w are distinct, positive, and smaller than G->V. If the graph already has an arc v-w, the function does not do anything. */
+/*#ifndef TARGET_GRAPH
+#define TARGET_GRAPH*/
+
 class TargetGraph {
 
 public:
-	TargetGraph(int n);
+	// constructor
+	TargetGraph(int n, int nThreads);
 
-	/* ADJACENCY LIST REPRESENTATION: the function GRAPHinsertArc() inserts an arc v-w in graph G. The function supposes that v and w are distinct, positive, and smaller than G->V. If the graph already has an arc v-w, the function does not do anything. */
+	// copy constructor
+	TargetGraph(const TargetGraph &graphToCopy);
+
 	void insertArc(vertex v, vertex w);
 
 	/* Updates vertex weights */
@@ -43,20 +50,39 @@ public:
 	/* Updates memory weights */
 	void setMemoryWeight(vertex v, int memoryWeight);
 
-	int getMemory(int machine);
+	/* Updates computational weights */
+	void setComputationalWeight(vertex v, int compWeight);
 
-	int getNumberOfVertices();
+	/* Updates connection weights */
+	void setConnectionWeight(vertex src, vertex dst, int connWeight);
 
-	void printGraph();
+	/* Updates assigned */
+	void setAssigned(int partition, int device);
+	void setAssignedPerThread(int partition, int device, int thread);
+
+	int getMemory(int machine) const;
+
+	int getComputationalWeight(int machine) const;
+
+	int getAssigned(int machine) const;
+	
+	int getConnectionWeight(int src, int dst) const;
+
+	int getNumberOfVertices() const;
+
+	void printGraph() const;
 
 	~TargetGraph();
 
 private:
    int V; 
    int A;
-   int *computationalWeights;
+   int numberOfThreads;
+   int *computationalWeight;
    int *memory;
    int *assigned;
+   int **assignedPerThread;
+   int **connectionMatrix;
    targetLink *adj; 
 };
 

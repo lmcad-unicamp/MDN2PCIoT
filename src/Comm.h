@@ -29,25 +29,29 @@
 class Comm : public GenericPartitioningAlgorithm {
 
 public:
-	Comm(SourceGraph *srcG, int nPartitions, bool movingNodes, bool exchangingNodes, TargetGraph *tgtG, int nVertices, int forcedInput, bool initPart);
+	Comm(SourceGraph *srcG, int nPartitions, bool movingNodes, bool exchangingNodes, TargetGraph *tgtG, int nVertices, int forcedInput, bool initPart, char *verbose, char *initPartFile, int numberOfThreads);
 
 	/* Returns the cost of partition the graph with partitioning p. */
-	virtual double computeCost(int *partitioning);
-	virtual double computeDiffCost(int *partitioning, unsigned node, unsigned k, unsigned originalNodePartition, unsigned original_k_Partition);
-	virtual void reCost(int *partitioning);
+	virtual double computeCost(const int *partitioning, bool openmp);
 
 	/* Returns true if the partitioning is valid, false otherwise. */
-	virtual bool validPartitioning(int *partitioning);
+	virtual bool validPartitioning(const int *partitioning);
+	virtual bool diffValidPartitioning(int *partitioning, unsigned node, unsigned k, unsigned originalNodePartition, unsigned original_k_Partition, bool singleOrSwap);
 
-	int getValidArray(int i);
-	int getValidIndex(int i);
+	int getValidArray(int i) const;
+	int getValidIndex(int i) const;
 
-	int buildNetworkTopology(int n, int k, int i, int j);
+	int buildNetworkTopology(int n, int k, int i, int j); // joao
 
-	SourceGraph *getSourceGraph();
 	~Comm();
 
 private:
+	void computeRedundantMemoryPerPartition(const int *p);
+	void computeNonredundantMemoryPerPartition(const int *p);
+	bool partitionsFitDevices(const int *p, int *sourceMem, bool openmp);
+	void computeDiffNodeMemoryPerPartition(int *partitioning, unsigned vertex, unsigned originalVertexPartition, int *sourceMem);
+	void computeDiffMemoryPerPartition(int *partitioning, unsigned node, unsigned k, unsigned originalNodePartition, unsigned original_k_Partition, int *sourceMem, bool singleOrSwap);
+
 	// sort functions (for validPartitioning)
 	void mergeSortWithIndexes(int *A, int p, int r, int *indexes);
 	void mergeSort(int **A, int p, int r);
@@ -55,10 +59,11 @@ private:
 	void merge(int **A, int p, int q, int r);
 
 	void setSourceGraph(SourceGraph *srcG);
-	void setInitialPartitionings(int forcedInput, bool initPart);
+	void setInitialPartitionings(int forcedInput, bool initPart, char *initPartFile);
+	void seed_rng(void);
 
-	SourceGraph *sourceG;
-	TargetGraph *target;
+	const SourceGraph *sourceG;	// could be const
+	const TargetGraph *target;	// const
 
 	// validArray contains memory needed for each partition
 	int *validArray;
@@ -66,10 +71,16 @@ private:
 	int *validIndexes;
 	int *targetIndexes;
 
-	// in order to just update cost, thus calculating it faster	
-	double currentCost;
+	int **validIndexesPerThread; // OpenMP
+	int *sortedTargetMem;
 
+	// eliminates redundant memory by accounting for shared memory only once per partition
+	bool **sharedMemoryPerPartition;
+
+	// eliminates redundant edges (edges that come from the same vertex and go to the same partition)
 	SourceGraph *partitionGraph;
+
+	SourceGraph **partitionGraphPerThread; // OpenMP
 };
 
 #endif // COMM_H

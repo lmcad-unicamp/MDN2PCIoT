@@ -72,72 +72,112 @@ struct Move_t {
 class GenericPartitioningAlgorithm {
 
 public:
-	GenericPartitioningAlgorithm(int nVertices, int nPartitions, bool movingNodes, bool exchangingNodes);
+	GenericPartitioningAlgorithm(int nVertices, int nPartitions, bool movingNodes, bool exchangingNodes, int numberOfThreads);
 	
 	void setInitialPartitioning();
-	void printPartitioning(int *partitioning);
+	void printPartitioning(const int *partitioning) const;
 
-	bool run();
+	bool run(char *instance);
 
 	/* Returns the cost of partition the graph with partitioning p. */
-	virtual double computeCost(int *partitioning) = 0;
-	virtual double computeDiffCost(int *partitioning, unsigned node, unsigned k, unsigned originalNodePartition, unsigned original_k_Partition) = 0;
-	// updates currentCost
-	virtual void reCost(int *partitioning) = 0;
+	virtual double computeCost(const int *partitioning, bool openmp) = 0;
 
 	/* Returns true if the partitioning is valid, false otherwise. */
-	virtual bool validPartitioning(int *partitioning) = 0;
+	virtual bool validPartitioning(const int *partitioning) = 0;
+	virtual bool diffValidPartitioning(int *partitioning, unsigned node, unsigned k, unsigned originalNodePartition, unsigned original_k_Partition, bool singleOrSwap) = 0;
 
-	int *getInitialPartitioning();
-	int *getBestPartitioning();
-	int getCurrentPartitioning(int node);
+	const int *getInitialPartitioning() const; 
+	const int *getBestPartitioning() const;
+	int getCurrentPartitioning(int node) const;
 
-	int getNumberOfPartitions();
-	int getNumberOfVertices();
-	bool getConsiderExchangingNodes();
-	bool getConsiderMovingNodes();
+	int getNumberOfVertices() const {
+		return numberOfVertices;
+	}
+	int getNumberOfPartitions() const {
+		return numberOfPartitions;
+	}
 
 	void setVertexInitialPartitionings(int v, int partition);
 
 	// to force input to be in the same partition
-	int getForcedInputSize();
-	void setForcedInputSize(int size);
+	void setForcedInputSize(int size);	
+	int getForcedInputSize() const {
+		return forcedInputSize;
+	}
+
+	// to force input to be in the same partition
+	int getNumberOfThreads() const {
+		return numberOfThreads;
+	}
+	int getThreadsForPartitions() const {
+		return threadsForPartitions;
+	}
 
 	~GenericPartitioningAlgorithm();
 
 private:
 	bool findBestSingleNodeMove(NodeIndex_t node, Move_t &m, double &bestC);
 	bool findBestNodeExchange(NodeIndex_t node, Move_t &m, double &bestC);
-	bool findBestMove(Move_t &m, double &cost);
-	void performMove(int *partitioning, Move_t &m);
+	bool findBestMove(Move_t &m, double &cost, int &thread);
+	
+	// If a member function is defined in the body of a class definition, the member function is implicitly declared inline.
+	void performMove(int *partitioning, Move_t &m) {
+		if (m.move_a) partitioning[m.a] = m.a_to;
+		if (m.move_b) partitioning[m.b] = m.b_to;
+	}
 
-	void lockNodes(Move_t &m);
-	void releaseAllNodes();    //bool empty(); (if set is not used)
+	void lockNodes(Move_t &m)  {
+		if (m.move_a) {
+			releasedVertices[m.a] = false;
+			releasedNodes.erase(m.a);
+		}
+		if (m.move_b)	{
+			releasedVertices[m.b] = false;
+			releasedNodes.erase(m.b);
+		}
+	}	
 
-	void setNumberOfPartitions(int nPartitions);
-	void setConsiderMovingNodes(bool movingNodes);
-	void setConsiderExchangingNodes(bool exchangingNodes);
-	void setNumberOfVertices(int nVertices);
+	//bool empty(); (if set is not used)
+	void releaseAllNodes() {
+
+#		pragma omp parallel for num_threads(getNumberOfThreads())
+		for (int i = 0; i < getNumberOfVertices(); i++) {
+			releasedVertices[i] = true;
+		}
+
+	    /* Add all node indices to released_nodes. */
+		for (NodeIndex_t i = 0; i < getNumberOfVertices(); i++) 
+    			releasedNodes.insert(i);
+	}   
+
+	void copyCurrentPartForThreads();
+	void copyBackCurrentPartForThreads(int thread);
 
 	// data members:
 	int *initialPartitioning;
 	int *currentPartitioning;
 	int *bestPartitioning;
 
-	int numberOfPartitions;
+	int **currentPartPerThread;
+
+	const int numberOfPartitions;		// const
 
 	std::set<NodeIndex_t> releasedNodes;
+	bool *releasedVertices; // same as releasedNodes, for OpenMP
 
-	bool considerMovingNodes;
-	bool considerExchangingNodes;
+	const bool considerMovingNodes;	// const
+	const bool considerExchangingNodes;	// const
 
 	double bestCost;
 
-	//graph_t* sourceGraph;
-	int numberOfVertices;
+	const int numberOfVertices;	// const
 
 	// to force input to be in the same partition
-	int forcedInputSize;
+	int forcedInputSize; // const
+
+	// OpenMP
+	int numberOfThreads;
+	int threadsForPartitions;
 };
 
 #endif // GPA

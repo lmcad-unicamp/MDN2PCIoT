@@ -36,6 +36,7 @@ struct graph {
    int enable_vertex_labels, enable_edge_weights, enable_vertex_weights, enable_memory;
    int *vertex_weights;
    int *memory;
+   int *degree;
    link *adj;
 };
 #endif
@@ -65,6 +66,9 @@ void GraphUpdateMemoryWeight(Graph G, vertex v, int memory_weight);
 
 /* Updates flags */
 void GraphUpdateFlags(Graph G, int enable_vertex_labels, int enable_edge_weights, int enable_vertex_weights, int enable_memory);
+
+/* Increase degree of both vertices after inserting an arc */
+void GraphIncreaseDegree(Graph G, vertex v, vertex w);
 
 void PrintGraph(Graph G);
 

@@ -64,6 +64,11 @@ Graph GraphInit(int V) {
 		printf("G->memory could not be allocated! \n");
 		exit(EXIT_FAILURE);
    }
+   G->degree = (int *) malloc(V * sizeof(int));
+   if (G->degree == NULL) {
+		printf("G->degree could not be allocated! \n");
+		exit(EXIT_FAILURE);
+   }
    G->adj = (link *) malloc(V * sizeof (link));
    if (G->adj == NULL) {
 		printf("G->adj could not be allocated! \n");
@@ -73,6 +78,7 @@ Graph GraphInit(int V) {
 	  G->vertex_weights[v] = 1;
       G->adj[v] = NULL;
 	  G->memory[v] = 1;
+	  G->degree[v] = 0;
    }
    if (odd == 1) {
       G->memory[V-1] = 0;
@@ -91,6 +97,13 @@ void GraphInsertArc(Graph G, vertex v, vertex w, int edge_weight) {
       if (a->w == w) return;
    G->adj[v] = NEWnode(w, G->adj[v], edge_weight);
    G->A++;
+   GraphIncreaseDegree(G, v, w);
+}
+
+/* Updates vertex weights */
+void GraphIncreaseDegree(Graph G, vertex v, vertex w) {
+	G->degree[v]++;
+	G->degree[w]++;
 }
 
 /* Updates vertex weights */
@@ -127,6 +140,7 @@ void PrintGraph(Graph G) {
 		if (G->enable_vertex_weights == 1) {
 			printf("Computational weight: %d ", G->vertex_weights[i]);
 		}
+		printf("Degree: %d ", G->degree[i]);
 		if (G->enable_edge_weights == 1) {
 			printf("Edge weights: ");
 			aux = G->adj[i];
@@ -152,6 +166,10 @@ void FreeGraph(Graph *G) {
 		if ((*G)->memory != NULL){
 			free((*G)->memory);
 			(*G)->memory = NULL;
+		}
+		if ((*G)->degree != NULL){
+			free((*G)->degree);
+			(*G)->degree = NULL;
 		}
 		if ((*G)->adj != NULL){		
 			for (i = 0; i < (*G)->V; i++) {

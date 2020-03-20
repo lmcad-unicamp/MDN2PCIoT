@@ -35,10 +35,10 @@ using namespace std;
 /*_________________________________________________________*/
 
 // read grf file defined as the same input to SCOTCH (except for memory weights, which are not present in SCOTCH)
-ReadInputFiles::ReadInputFiles(char *fileName, char *targetName) {
+ReadInputFiles::ReadInputFiles(char *fileName, char *targetName, int numberOfThreads) {
 	FILE *fp=NULL;
-	char flagAux, adjAux[6000], *fgetsAux, *fgetsEdge, *caux;
-	int i, weightAux, enableVertexLabels, enableEdgeWeights, enableVertexWeights, enableMemoryWeights, aux, numVertices, numTarget;
+	char flagAux, adjAux[6000], *fgetsAux, *fgetsEdge, *caux, comment[]="#";
+	int i, j, weightAux, enableVertexLabels, enableEdgeWeights, enableVertexWeights, enableMemoryWeights, aux, numVertices, numTarget;
 
 	// read target file
 	char isDeco[8];
@@ -59,33 +59,42 @@ ReadInputFiles::ReadInputFiles(char *fileName, char *targetName) {
 
 	// read num_vertices
 	i = fscanf(fp, "%d %d ", &numTarget, &weightAux);
-	machines = new TargetGraph(numTarget);
+	machines = new TargetGraph(numTarget, numberOfThreads);
 
 	for(i = 0; i < numTarget; i++) {
 		// read computational weights
 		aux = fscanf(fp, "%d %d ", &weightAux, &weightAux);
-	    //setComputationalWeight(i, weightAux);
+		machines->setComputationalWeight(i, weightAux);
 
 		// read memory weights
 		aux = fscanf(fp, "%d %d ", &weightAux, &weightAux);
 		machines->setMemoryWeight(i, weightAux);
 	}
 
-	/* TODO: read connections between devices
-	for(
-		// read vertex adjacency list
-		fgets(adj_aux, sizeof(adj_aux), fp);
-		fgets_aux = strtok(adj_aux, " ");
-		while(fgets_aux != NULL){
-			GraphInsertArc(Source_graph, i, atoi(fgets_aux)); 
-			fgets_aux = strtok(NULL, " ");
-		}			
-	} 
-	arrumar */
+	// TODO: jump to next line if it is a comment (#)
+	/*aux = fscanf(fp, "%c", &flagAux);
+	strcpy(adjAux, &flagAux);
+	printf("\n %s", &flagAux);
+	printf("\n %s", comment);
+	while (strcmp(&flagAux,comment) == 0) {
+		printf("\n #");
+		fgetsAux = fgets(adjAux, 6000, fp);
+		aux = fscanf(fp, "%c", &flagAux);
+		strcpy(adjAux, &flagAux);
+	}*/
+
+	// read connections between devices
+	for(i = 1; i < numTarget; i++) {
+		for (j = 0; j < i; j++) {
+			aux = fscanf(fp, "%d ", &weightAux);
+			machines->setConnectionWeight(i, j, weightAux);
+		}
+	}
 
 	fclose(fp);
 	fp = NULL;
 
+	/* __________________________________________________________________________________ */
 	/* Opens SourceGraph file to read SourceGraph data*/
 	fp = fopen(fileName, "r");
 	if(fp == NULL){
@@ -95,7 +104,6 @@ ReadInputFiles::ReadInputFiles(char *fileName, char *targetName) {
 
 	// read numVertices
 	i = fscanf(fp, "%d\n%d ", &numVertices, &numVertices);
-	inputGraph = new SourceGraph(numVertices, numTarget);
 
 	// (not used, other graph parameters)
 	i = fscanf(fp, "%d\n%d ", &i, &i);
@@ -109,10 +117,49 @@ ReadInputFiles::ReadInputFiles(char *fileName, char *targetName) {
 	enableEdgeWeights = atoi(&flagAux);
 	flagAux = fgetc(fp);
 	enableVertexWeights = atoi(&flagAux);
-	inputGraph->setFlags(enableVertexLabels, enableEdgeWeights, enableVertexWeights, enableMemoryWeights);
 
+	// read number of layers
+	int numberOfLayers;
+	i = fscanf(fp, "%d", &numberOfLayers);
+
+	// instantiate the source graph
+	inputGraph = new SourceGraph(numVertices, numberOfLayers, numTarget);
+	inputGraph->setFlags(enableVertexLabels, enableEdgeWeights, enableVertexWeights, enableMemoryWeights);
+	
+	// read positions at which each layer begins
+	int layerInitialPos, sharedParam;
+	for (i = 0; i < numberOfLayers; i++) {
+		aux = fscanf(fp, "%d ", &layerInitialPos);
+		inputGraph->setLayerInitialPos(i, layerInitialPos);
+	}
+	// read number of shared parameters per layer
+	for (i = 0; i < numberOfLayers; i++) {
+		aux = fscanf(fp, "%d ", &sharedParam);
+		inputGraph->setSharedParam(i, sharedParam);
+	}
+
+	// read width and height of each layer
+	int layerWidth, layerHeight;
+	for (i = 0; i < numberOfLayers; i++) {
+		aux = fscanf(fp, "%d ", &layerWidth);
+		//cout << "\n lw: " << layerWidth;
+		inputGraph->setLayerWidth(i, layerWidth);
+	}
+	for (i = 0; i < numberOfLayers; i++) {
+		aux = fscanf(fp, "%d ", &layerHeight);
+		inputGraph->setLayerHeight(i, layerHeight);
+	}
+
+	// read original depth of each layer
+	int orDepth;
+	for (i = 0; i < numberOfLayers; i++) {
+		aux = fscanf(fp, "%d ", &orDepth);
+		inputGraph->setOriginalDepth(i, orDepth);
+	}	
+
+	// read each vertex properties (memory, vertex (computational) weight, degree, edges, edge weights)
 	for(i = 0; i < numVertices; i++) {
-		// read memory weights if necessary
+		// read memory weights if necessary 
 		if(enableMemoryWeights != 0) {
 			aux = fscanf(fp, "%d ", &weightAux);
 			inputGraph->setMemoryWeight(i, weightAux);
@@ -121,9 +168,10 @@ ReadInputFiles::ReadInputFiles(char *fileName, char *targetName) {
 		// read vertex weights if necessary
 		if(enableVertexWeights != 0) {
 			aux = fscanf(fp, "%d ", &weightAux);
+			inputGraph->setVertexWeight(i, weightAux);
 		}
 
-		// read vertex degree (not used)
+		// read vertex degree (only used if degree = 0)
 		aux = fscanf(fp, "%d ", &weightAux);
 		if (weightAux == 0) continue;
 
@@ -133,8 +181,8 @@ ReadInputFiles::ReadInputFiles(char *fileName, char *targetName) {
 			fgetsAux = strtok(adjAux, " ");
 			while(fgetsAux != NULL){
 				//cout << "\ni: " << i << " edge: " << atoi(fgetsAux);
-				inputGraph->insertArc(i, atoi(fgetsAux), 1);
-				inputGraph->setAdjMatrix(i, atoi(fgetsAux), 1);
+				inputGraph->insertArc(i, atoi(fgetsAux), -2, 1);
+				//inputGraph->setAdjMatrix(i, atoi(fgetsAux), 1);
 				fgetsAux = strtok(NULL, " ");
 			}
 		} else {
@@ -144,9 +192,62 @@ ReadInputFiles::ReadInputFiles(char *fileName, char *targetName) {
 			fgetsEdge = strtok(adjAux, " ");
 			while(fgetsEdge != NULL){
 				fgetsAux = strtok(NULL, " ");
+
+				// define tag to calculate redundant neurons in each edge send
+				int redN = -2222, iLayer = 0, adjLayer = 0;
+				for (int j = 0; j < inputGraph->getNumberOfLayers(); j++) {
+					if (iLayer == inputGraph->getNumberOfLayers() - 1)
+						break;
+					if (i < inputGraph->getLayerInitialPos(j + 1)) {
+						break;
+					} else {
+						iLayer++;
+					}
+				}
+				for (int j = 0; j < inputGraph->getNumberOfLayers(); j++) {
+					if (adjLayer == inputGraph->getNumberOfLayers() - 1)
+						break;
+					if (atoi(fgetsAux) < inputGraph->getLayerInitialPos(j + 1)) {
+						break;
+					} else {
+						adjLayer++;
+					}
+				}
+				int k, j; // line, column of i
+				k = (i - inputGraph->getLayerInitialPos(iLayer)) / inputGraph->getLayerWidth(iLayer);
+				j = (i - inputGraph->getLayerInitialPos(iLayer)) % inputGraph->getLayerWidth(iLayer);
+				int l, m; // line, column of atoi(fgetsAux) (adj)
+				l = (atoi(fgetsAux) - inputGraph->getLayerInitialPos(adjLayer)) / inputGraph->getLayerWidth(iLayer);
+				m = (atoi(fgetsAux) - inputGraph->getLayerInitialPos(adjLayer)) % inputGraph->getLayerWidth(iLayer);
+
+				// not used
+				if (adjLayer >= 5) {
+					redN = -2222;
+				} else if (k == l && j == m) {
+					redN = 0;
+				} else if (k + 1 == l && j + 1 == m) {
+					redN = 33;
+				} else if (k + 1 == l && j == m) {
+					redN = 32;
+				} else if (k == l && j + 1 == m) {
+					redN = 1;
+				} else if (k + 1 == l && j - 1 == m) {
+					redN = 31;
+				} else if (k == l && j - 1 == m) {
+					redN = -1;
+				} else if (k - 1 == l && j + 1 == m) {
+					redN = -31;
+				} else if (k - 1 == l && j == m) {
+					redN = -32;
+				} else if (k - 1 == l && j - 1 == m) {
+					redN = -33;
+				}
+
+				//cout << "\n i: " << i << " iLayer: " << iLayer << " adj: " << atoi(fgetsAux) << " adjLayer: " << adjLayer << " redN: " << redN;
+
 				//printf("\n%d %d %d", atoi(fgetsEdge), atoi(fgetsAux), i);
-				inputGraph->insertArc(i, atoi(fgetsAux), atoi(fgetsEdge));
-				inputGraph->setAdjMatrix(i, atoi(fgetsAux), atof(fgetsEdge));
+				inputGraph->insertArc(i, atoi(fgetsAux), atoi(fgetsEdge), redN);
+				//inputGraph->setAdjMatrix(i, atoi(fgetsAux), atof(fgetsEdge));
 				fgetsEdge = strtok(NULL, " ");
 			}
 		}
@@ -154,26 +255,27 @@ ReadInputFiles::ReadInputFiles(char *fileName, char *targetName) {
 
 	fclose(fp);
 	fp = NULL;
-	//return Source_graph;
 }
 
-ReadInputFiles::~ReadInputFiles() {
-
-}
-
-SourceGraph* ReadInputFiles::getSourceGraph() {
+const SourceGraph* ReadInputFiles::getSourceGraph() const {
 	return inputGraph;
 }
 
-int ReadInputFiles::getNumberOfVertices() {
+int ReadInputFiles::getNumberOfVertices() const {
 	return inputGraph->getNumberOfVertices();
 }
 
-int ReadInputFiles::getTargetNumberOfVertices() {
+int ReadInputFiles::getTargetNumberOfVertices() const {
 	return machines->getNumberOfVertices();
 }
 
-TargetGraph* ReadInputFiles::getTargetGraph() {
+const TargetGraph* ReadInputFiles::getTargetGraph() const {
 	return machines;
+}
+
+ReadInputFiles::~ReadInputFiles() {
+	//cout << "\nReadInputFiles object destructor\n";
+	delete inputGraph;
+	delete machines;
 }
 

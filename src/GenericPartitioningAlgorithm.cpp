@@ -22,21 +22,21 @@
 #include <iostream>
 #include <malloc.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/time.h>
 #include "GenericPartitioningAlgorithm.h"
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 using namespace std;
 
-GenericPartitioningAlgorithm::GenericPartitioningAlgorithm(int nVertices, int nPartitions, bool movingNodes, bool exchangingNodes) {
-
-	setNumberOfVertices(nVertices);
-	setNumberOfPartitions(nPartitions);
-	setConsiderMovingNodes(movingNodes);
-	setConsiderExchangingNodes(exchangingNodes);
+GenericPartitioningAlgorithm::GenericPartitioningAlgorithm(int nVertices, int nPartitions, bool movingNodes, bool exchangingNodes, int nThreads) : numberOfPartitions(nPartitions), considerMovingNodes(movingNodes), considerExchangingNodes(exchangingNodes), numberOfVertices(nVertices), numberOfThreads(nThreads) {
 
 	// if set is not used
-	//releasedNodes = (NodeIndex_t *) malloc(getNumberOfVertices() * sizeof(NodeIndex_t));
-	//releaseAllNodes();
+	releasedVertices = (bool *) malloc(getNumberOfVertices() * sizeof(bool));
+	releaseAllNodes();
 
 	initialPartitioning = (int *) malloc(getNumberOfVertices() * sizeof(int));
 	if(initialPartitioning == NULL) {
@@ -55,45 +55,26 @@ GenericPartitioningAlgorithm::GenericPartitioningAlgorithm(int nVertices, int nP
 		cout << "\n bestPartitioning could not be allocated! \n";
 		exit(EXIT_FAILURE);	
 	}
+
+	currentPartPerThread = (int **) malloc(getNumberOfThreads() * sizeof(int *));
+	if(currentPartPerThread == NULL) {
+		cout << "\n currentPartPerThread could not be allocated! \n";
+		exit(EXIT_FAILURE);	
+	}
+	for (int i = 0; i < getNumberOfThreads(); i++) {
+		currentPartPerThread[i] = (int *) malloc(getNumberOfVertices() * sizeof(int));
+		if (currentPartPerThread[i] == NULL) {
+			cout << "\n currentPartPerThread[i] could not be allocated! \n";
+			exit(EXIT_FAILURE);	
+		}		
+	}
 }
 
 void GenericPartitioningAlgorithm::setForcedInputSize(int size) {
 	forcedInputSize = size;
 }
 
-int GenericPartitioningAlgorithm::getForcedInputSize() {
-	return forcedInputSize;
-}
-
-void GenericPartitioningAlgorithm::setNumberOfPartitions(int nPartitions) {
-	numberOfPartitions = nPartitions;
-}
-
-void GenericPartitioningAlgorithm::setNumberOfVertices(int nVertices) {
-	numberOfVertices = nVertices;
-}
-
-int GenericPartitioningAlgorithm::getNumberOfVertices() {
-	return numberOfVertices;
-}
-
-void GenericPartitioningAlgorithm::setConsiderMovingNodes(bool movingNodes) {
-	considerMovingNodes = movingNodes;
-}
-
-void GenericPartitioningAlgorithm::setConsiderExchangingNodes(bool exchangingNodes) {
-	considerExchangingNodes = exchangingNodes;
-}
-
-bool GenericPartitioningAlgorithm::getConsiderExchangingNodes() {
-	return considerExchangingNodes;
-}
-
-bool GenericPartitioningAlgorithm::getConsiderMovingNodes() {
-	return considerMovingNodes;
-}
-
-int GenericPartitioningAlgorithm::getCurrentPartitioning(int node) {
+int GenericPartitioningAlgorithm::getCurrentPartitioning(int node) const {
 	return currentPartitioning[node];	
 }
 
@@ -108,16 +89,22 @@ bool GenericPartitioningAlgorithm::findBestSingleNodeMove(NodeIndex_t node,
 														  Move_t &m, 
 													      double &bestC) {
 	bool foundMove = false;
-	PartitionIndex_t originalPartitioning = currentPartitioning[node];
+	PartitionIndex_t originalPartitioning = currentPartPerThread[omp_get_thread_num()][node];
+	//PartitionIndex_t originalPartitioning = currentPartitioning[node];
 
 	for (PartitionIndex_t p = 0; p < numberOfPartitions; p++) {
 		if (p == originalPartitioning) continue;
-		currentPartitioning[node] = p;
 
-		if (!validPartitioning(currentPartitioning)) continue;
+		currentPartPerThread[omp_get_thread_num()][node] = p;
+		//currentPartitioning[node] = p;
+
+		//if (!validPartitioning(currentPartitioning)) continue;
+		if (!diffValidPartitioning(currentPartPerThread[omp_get_thread_num()], node, 0, originalPartitioning, 0, 0)) continue;
 
 		//double c = computeDiffCost(currentPartitioning, node, 0);
-		double c = computeCost(currentPartitioning);
+		double c = computeCost(currentPartPerThread[omp_get_thread_num()], true);
+		//double c = computeCost(currentPartitioning);
+		//cout << "\nThread[" << omp_get_thread_num() << "]: " << c;
 		if (!foundMove || (c < bestC)) {
 			foundMove = true;
 			bestC = c;
@@ -125,8 +112,10 @@ bool GenericPartitioningAlgorithm::findBestSingleNodeMove(NodeIndex_t node,
 		}
 	}
 	/* Restore current Partitioning. */
-	currentPartitioning[node] = originalPartitioning;
-	//cout << "\nfindBestSingleNodeMove: m.a: " << m.a << " cost: " << bestC << " foundMove: " << foundMove;
+	currentPartPerThread[omp_get_thread_num()][node] = originalPartitioning;
+	//currentPartitioning[node] = originalPartitioning;
+	/*if (omp_get_thread_num() == 2)
+		cout << "\nfindBestSingleNodeMove: m.a: " << m.a << " cost: " << bestC << " foundMove: " << foundMove;*/
 	return foundMove;
 }
 
@@ -135,7 +124,8 @@ bool GenericPartitioningAlgorithm::findBestNodeExchange(NodeIndex_t node,
 														Move_t &m, 
 														double& bestC) {
 	bool foundExchange = false;
-	PartitionIndex_t originalNodePartition = currentPartitioning[node];
+	//PartitionIndex_t originalNodePartition = currentPartitioning[node];
+	PartitionIndex_t originalNodePartition = currentPartPerThread[omp_get_thread_num()][node];
 	//int i;
 
 	//cout << "\nbestC: " << bestC;
@@ -154,18 +144,19 @@ bool GenericPartitioningAlgorithm::findBestNodeExchange(NodeIndex_t node,
 		if (k < getForcedInputSize()) continue;
 
 		/* Skip in case i and k are in the same partition. */
-		if (currentPartitioning[k] == originalNodePartition) continue;
+		if (currentPartPerThread[omp_get_thread_num()][k] == originalNodePartition) continue;
 
 		/* Check whether exchanging k and i is profitable. */
-		PartitionIndex_t original_k_Partition = currentPartitioning[k];
+		PartitionIndex_t original_k_Partition = currentPartPerThread[omp_get_thread_num()][k];
 		/* Pretend we perform the exchange */ 
-		currentPartitioning[node] = original_k_Partition;
-		currentPartitioning[k] = originalNodePartition;
+		currentPartPerThread[omp_get_thread_num()][node] = original_k_Partition;
+		currentPartPerThread[omp_get_thread_num()][k] = originalNodePartition;
 
-		if (validPartitioning(currentPartitioning)) {
+		//if (validPartitioning(currentPartitioning)) {
+		if (diffValidPartitioning(currentPartPerThread[omp_get_thread_num()], node, k, originalNodePartition, original_k_Partition, 1)) {
 			/* check the cost. */
 			//double c = computeDiffCost(currentPartitioning, node, k, originalNodePartition, original_k_Partition);
-			double c = computeCost(currentPartitioning);
+			double c = computeCost(currentPartPerThread[omp_get_thread_num()], true);
 			//cout << "\nnode: " << node << " k: " << k << " cost: " << c;
 			if (!foundExchange || (c <= bestC)) {
 				foundExchange = true;
@@ -175,112 +166,74 @@ bool GenericPartitioningAlgorithm::findBestNodeExchange(NodeIndex_t node,
 		}
 
 		/* Recover the original partitioning. */
-		currentPartitioning[k] = original_k_Partition;
-		currentPartitioning[node] = originalNodePartition;
+		currentPartPerThread[omp_get_thread_num()][k] = original_k_Partition;
+		currentPartPerThread[omp_get_thread_num()][node] = originalNodePartition;
 		//}
 	}
 
 	/* Restore current Partitioning. */
-	currentPartitioning[node] = originalNodePartition;
+	currentPartPerThread[omp_get_thread_num()][node] = originalNodePartition;
 	//cout << "\nfindBestNodeExchange: m.a: " << m.a << " m.b: " << m.b << " cost: " << bestC << " foundExchange: " << foundExchange;
 	return foundExchange;
 }
 
-bool GenericPartitioningAlgorithm::findBestMove(Move_t &move, double &cost) {
-
+bool GenericPartitioningAlgorithm::findBestMove(Move_t &move, double &cost, int &thread) {
 	bool found = false;
 	std::set<NodeIndex_t>::iterator it;
-	//int i;
+	NodeIndex_t i;
 
-	//for (i = 0; i < sourceG->getNumberOfVertices(); i++) {
-		//if (releasedNodes[i]) {
-	for (it = releasedNodes.begin(); it != releasedNodes.end(); ++it) {
-		NodeIndex_t i = *it;
+#	pragma omp parallel for num_threads(getNumberOfThreads()) reduction(||: found) schedule(static, 1)
+	for (i = 0; i < getNumberOfVertices(); i++) {
+		if (!releasedVertices[i]) continue;
+	/*for (it = releasedNodes.begin(); it != releasedNodes.end(); ++it) {
+		NodeIndex_t i = *it;*/
 
 		// force input to stay in the same partition, if getInputSize() > 0
 		if (i < getForcedInputSize()) continue;
 
 		Move_t m = move; 
 		double c = cost;
+		int t = omp_get_thread_num();
 
 		if (considerMovingNodes) {
 			if (findBestSingleNodeMove(i, m, c)) {
+#				pragma omp critical
 				if (!found || (c < cost)) {
 					found = true;
 					//bestMove = m;
 					cost = c;
 					move = m;
+					thread = t;
 				}
 			}
 		}
 
 		if (considerExchangingNodes){
 			if (findBestNodeExchange(i, m, c)) {
+#				pragma omp critical
 				if (!found || (c <= cost)) {
 					found = true;
 					//bestMove = m;
 					cost = c;
 					move = m;
+					thread = t;
 				}
 			}
 		}
-		//}
 	}
 	//cout << "\n findBestMove: m.a: " << move.a << " m.b: " << move.b << " cost: " << cost << " found: " << found;
 	return found;
 }
 
-
-void GenericPartitioningAlgorithm::performMove(int *partitioning, Move_t &m) {
-	if (m.move_a) partitioning[m.a] = m.a_to;
-	if (m.move_b) partitioning[m.b] = m.b_to;
-}
-
-void GenericPartitioningAlgorithm::lockNodes(Move_t &m) {
-	if (m.move_a)
-		//releasedNodes[m.a] = false;
-		releasedNodes.erase(m.a);
-	if (m.move_b)	
-		//releasedNodes[m.b] = false;
-		releasedNodes.erase(m.b);
-}
-
-void GenericPartitioningAlgorithm::releaseAllNodes() {
-	/*int i;
-
-	for (i = 0; i < getNumberOfVertices(); i++) {
-		releasedNodes[i] = true;
-	}*/
-
-    /* Add all node indices to released_nodes. */ 
-	for (NodeIndex_t i = 0; i < getNumberOfVertices(); i++) 
-    	releasedNodes.insert(i);
-}
-
-/*bool GenericPartitioningAlgorithm::empty() {
-	int i;
-
-	for (i = 0; i < getNumberOfVertices(); i++) {
-		if (releasedNodes[i] == true) {
-			return false;
-		}
-	}
-	return true;
-}*/
-
-int *GenericPartitioningAlgorithm::getInitialPartitioning() {
+const int *GenericPartitioningAlgorithm::getInitialPartitioning() const {
 	return initialPartitioning;
 }
 
-int *GenericPartitioningAlgorithm::getBestPartitioning() {
+const int *GenericPartitioningAlgorithm::getBestPartitioning() const {
 	return bestPartitioning;
 }
 
-int GenericPartitioningAlgorithm::getNumberOfPartitions() {
-	return numberOfPartitions;
-}
-
-void GenericPartitioningAlgorithm::printPartitioning(int *partitioning) {
+void GenericPartitioningAlgorithm::printPartitioning(const int *partitioning) const {
 	int i;
 	
 	cout << "\nPartitioning:\n";
@@ -290,13 +243,44 @@ void GenericPartitioningAlgorithm::printPartitioning(int *partitioning) {
 	cout << endl;
 }
 
-bool GenericPartitioningAlgorithm::run() {
+void GenericPartitioningAlgorithm::copyCurrentPartForThreads(){
+#	pragma omp parallel for num_threads(getNumberOfThreads())
+	for (int j = 0; j < getNumberOfThreads(); j++)
+		for (int i = 0; i < getNumberOfVertices(); i++)
+			currentPartPerThread[j][i] = currentPartitioning[i];
+}
+
+void GenericPartitioningAlgorithm::copyBackCurrentPartForThreads(int thread){
+#	pragma omp parallel for num_threads(getNumberOfThreads())
+	for (int i = 0; i < getNumberOfVertices(); i++)
+		currentPartitioning[i] = currentPartPerThread[thread][i];
+}
+
+bool GenericPartitioningAlgorithm::run(char *instance) {
 	bool bestPartitionModified = true;
-	double bestC = computeCost(bestPartitioning);
+	double bestC = computeCost(bestPartitioning, false);
 	int i;
+	FILE *wcost = NULL, *currentPart = NULL, *epochPart = NULL;
+	char currentPartFileName[1000], epochPartFileName[1000];
+
+	wcost = fopen(instance, "w");
+
+	strcpy(currentPartFileName, instance);
+	strcat(currentPartFileName, "-currentPart");
+
+	strcpy(epochPartFileName, instance);
+	strcat(epochPartFileName, "-epochPart");
 
 	struct timeval tim;
 	double initial, epoch_time;
+
+	if (bestC >=0) {
+		fprintf(wcost, " %f", bestC);
+		cout << "\n" << bestC;
+	} else {
+		fprintf(wcost, " %f", -bestC);
+		cout << "\n" << -bestC;
+	}
 
 	/* Cycle through epochs. */
 	while(bestPartitionModified) { 
@@ -307,8 +291,12 @@ bool GenericPartitioningAlgorithm::run() {
 		bestPartitionModified = false;
 
 		// updates currentCost 	
-		reCost(bestPartitioning);
+		//reCost(bestPartitioning);
 
+		// updates validArray
+		validPartitioning(bestPartitioning);
+
+#		pragma omp parallel for num_threads(getNumberOfThreads())
 		for (i = 0; i < getNumberOfVertices(); i++) {
 			currentPartitioning[i] = bestPartitioning[i];
 		}
@@ -319,10 +307,17 @@ bool GenericPartitioningAlgorithm::run() {
 		while (!releasedNodes.empty()) {
 			/* Iteration */
 			Move_t m;
-			double cost;
+			double cost = bestC;
+			int thread;
 
-			if (!findBestMove(m, cost)) 
+			copyCurrentPartForThreads();
+
+			if (!findBestMove(m, cost, thread)) 
 				break; /* Could not find a valid move -- epoch done. */
+
+			//cout << "\nt=" << thread << " c=" << bestC << " m=" << m.a << " c=" << cost; 
+
+			//copyBackCurrentPartForThreads(thread);
 
 			/* Lock nodes. */
 			lockNodes(m);
@@ -333,7 +328,10 @@ bool GenericPartitioningAlgorithm::run() {
 			//printPartitioning(currentPartitioning);
 
 			// updates currentCost 	
-			reCost(currentPartitioning);
+			//reCost(currentPartitioning);
+
+			// updates validArray
+			validPartitioning(currentPartitioning);
 
 			/* Save best */
 			if (cost <= bestC) {
@@ -341,17 +339,39 @@ bool GenericPartitioningAlgorithm::run() {
 					bestPartitionModified = true;
 				}
 				bestC = cost;
+				currentPart = fopen(currentPartFileName, "w");
 				//bestPartitioning = currentPartitioning;
 				for (i = 0; i < getNumberOfVertices(); i++) {
 					bestPartitioning[i] = currentPartitioning[i];
+					fprintf(currentPart, "%d ", bestPartitioning[i]);
 				}
+				fclose(currentPart);
+				currentPart = NULL;
 			}
 			//cout << "\n  run: m.a: " << m.a << " m.b: " << m.b << " bestC: " << bestC << "\n";
 		}
+
+		epochPart = fopen(epochPartFileName, "w");
+		for (i = 0; i < getNumberOfVertices(); i++) {
+			fprintf(epochPart, "%d ", bestPartitioning[i]);
+		}
+		fclose(epochPart);
+		epochPart = NULL;
+
 		gettimeofday(&tim, NULL);
 		epoch_time = tim.tv_sec+(tim.tv_usec/1000000.0);
-		cout << "\n  epoch: bestC: " << bestC << ", epoch time: " << epoch_time - initial << "\n";
+		//cout << "\n  epoch: bestC: " << bestC << ", epoch time: " << (epoch_time - initial) / 3600 << "\n";
+		if (bestC >=0) {
+			fprintf(wcost, " %f", bestC);
+			cout << "\n" << bestC << ", epoch time: " << (epoch_time - initial) / 3600 << endl;
+		} else {
+			fprintf(wcost, " %f", -bestC);
+			cout << "\n" << -bestC << ", epoch time: " << (epoch_time - initial) / 3600 << endl;
+		}
 	}
+	fprintf(wcost, "\n");
+	fclose(wcost);
+	wcost = NULL;
 	return bestPartitionModified;
 }
 
@@ -367,5 +387,15 @@ GenericPartitioningAlgorithm::~GenericPartitioningAlgorithm() {
 	if (currentPartitioning != NULL) {
 		free(currentPartitioning);
 		currentPartitioning = NULL;
+	}
+
+	if (currentPartPerThread != NULL) {
+		for (int i = 0; i < getNumberOfThreads(); i++) {
+			if (currentPartPerThread[i] != NULL) {
+				free(currentPartPerThread[i]);
+			}
+		}
+		free(currentPartPerThread);
+		currentPartPerThread = NULL;
 	}
 }

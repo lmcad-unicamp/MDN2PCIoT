@@ -20,54 +20,125 @@
  ***************************************************************************/
 
 #include <iostream>
+#include <malloc.h>
+#include <string.h>
+#include <stdlib.h>
 #include "ReadInputFiles.h"
+#include "InferenceRate.h"
 #include "Comm.h"
 
 using namespace std;
 
-int main() {
-	char fileName[29] = "source-graphs/LeNet-765v.grf";
-	char targetName[27] = "target-graphs/machines.tgt";
+int main(int argc, char *argv[]) {
+	//char fileName[50] = "source-graphs/LeNet-0765@vertices.grf";
+	//char targetName[27] = "target-graphs/machines.tgt";
 
 	bool singleMove = true;
 	bool swaps = true;
-	int forcedInput = 0; // 256 to force input
-	bool initPart = false;  //false: random initial partitioning
+	bool initPart = false;
+	int forcedInput = 0;
+
+	if (strcmp(argv[7], "0") == 0) {
+		forcedInput = 0; // 0 to do not force input
+	} else if (strcmp(argv[7], "256") == 0) {
+		forcedInput = 256; // 256 to force input (SBAC-PAD-2018, 2x2)
+	} else if (strcmp(argv[7], "1024") == 0) {
+		forcedInput = 1024; // 1024 to LeNet 1x1
+	}
+
+	if ((strcmp(argv[4], "0")) == 0) {
+		initPart = false;  //false: random initial partitioning
 							// true: read initial partitioning from initPart.txt
-
-	ReadInputFiles r(fileName, targetName);
-
-	SourceGraph g(r.getNumberOfVertices(), r.getTargetNumberOfVertices());
-	g = *r.getSourceGraph();
-	g.printGraph();
-
-	TargetGraph t(r.getTargetNumberOfVertices());
-	t = *r.getTargetGraph();
-
-	Comm Comm2(&g, r.getTargetNumberOfVertices(), singleMove, swaps, &t, g.getNumberOfVertices(), forcedInput, initPart);
-
-	t.printGraph();
-	cout << "\nSingleMoves: " << singleMove << ", swaps: " << swaps << ", locked input: " << forcedInput;
-
-	cout << "\n\nInitial partitioning:";
-	Comm2.printPartitioning(Comm2.getInitialPartitioning());
-	cout << "initialCost: " << Comm2.computeCost(Comm2.getInitialPartitioning()) << "\n";
-	int memoryValid = Comm2.validPartitioning(Comm2.getInitialPartitioning());
-	for (int i = 0; i < Comm2.getNumberOfPartitions(); i++) {
-		cout << "mem[" << i << "]: " << Comm2.getValidArray(i) << " ";
+	} else {
+		initPart = true;
 	}
-	cout << "\nmemoryValid: " << memoryValid << "\n\n";
-	
-	Comm2.run();
 
-	cout << "\nBest partitioning found:";
-	Comm2.printPartitioning(Comm2.getBestPartitioning());
-	cout << "bestCost: " << Comm2.computeCost(Comm2.getBestPartitioning()) << "\n";
-	memoryValid = Comm2.validPartitioning(Comm2.getBestPartitioning());
-	for (int i = 0; i < Comm2.getNumberOfPartitions(); i++) {
-		cout << "mem[" << i << "]: " << Comm2.getValidArray(i) << " ";
+	// OpenMP
+	int numberOfThreads = strtol(argv[8], NULL, 10);
+
+	ReadInputFiles r(argv[1], argv[2], numberOfThreads); // automatic object
+
+	SourceGraph g(*r.getSourceGraph());
+	if ((strcmp(argv[6], "verb")) == 0) {
+		//g.printGraph();
 	}
-	cout << "\nmemoryValid: " << memoryValid << "\n\n";
+
+	// Adjacency matrix
+	/*for (int i = 0; i < g.getNumberOfVertices(); i++) {
+		for (int j = 0; j < g.getNumberOfVertices(); j++)
+			cout << g.getAdjMatrixEdgeWeight(i, j) << " ";
+		cout << "\n";
+	}*/
+
+	TargetGraph t(*r.getTargetGraph());
+
+	// ----------------------//
+	// ----------------------//
+	// ----- Comm -----//
+	if ((strcmp(argv[5], "DN2PCIoTcomm")) == 0) {
+		Comm Comm2(&g, r.getTargetNumberOfVertices(), singleMove, swaps, &t, g.getNumberOfVertices(), forcedInput, initPart, argv[6], argv[4], numberOfThreads);
+
+		if ((strcmp(argv[6], "verb")) == 0) {
+			t.printGraph();
+		}
+		cout << "\nsourceGraphFile: " << argv[1] << "\ntargetGraphFile: " << argv[2];
+		cout << "\nSingleMoves: " << singleMove << ", swaps: " << swaps << ", locked input: " << forcedInput << ", initPart: " << initPart << ", DN2PCIoTcomm, number of threads: " << numberOfThreads;
+		cout << "\ninitPartFileName: " << argv[4];
+
+		cout << "\n\nInitial partitioning:";
+		Comm2.printPartitioning(Comm2.getInitialPartitioning());
+		cout << "initialCost: " << Comm2.computeCost(Comm2.getInitialPartitioning(), false) << "\n";
+		int memoryValid = Comm2.validPartitioning(Comm2.getInitialPartitioning());
+		for (int i = 0; i < Comm2.getNumberOfPartitions(); i++) {
+			cout << "mem[" << i << "]: " << Comm2.getValidArray(i) << " ";
+		}
+		cout << "\nmemoryValid: " << memoryValid << "\n\n" << endl;
 	
+		Comm2.run(argv[3]);
+
+		cout << "\nBest partitioning found:";
+		Comm2.printPartitioning(Comm2.getBestPartitioning());
+		cout << "bestCost: " << Comm2.computeCost(Comm2.getBestPartitioning(), false) << "\n";
+		memoryValid = Comm2.validPartitioning(Comm2.getBestPartitioning());
+		for (int i = 0; i < Comm2.getNumberOfPartitions(); i++) {
+			cout << "mem[" << i << "]: " << Comm2.getValidArray(i) << " ";
+		}
+		cout << "\nmemoryValid: " << memoryValid << "\n\n";
+
+	// ----------------------------//
+	// ----------------------------//
+	// ----- InferenceRate -----//
+	} else if ((strcmp(argv[5], "DN2PCIoTiR")) == 0) {
+		InferenceRate InferenceRate(&g, r.getTargetNumberOfVertices(), singleMove, swaps, &t, g.getNumberOfVertices(), forcedInput, initPart, argv[6], argv[4], numberOfThreads);
+
+		if ((strcmp(argv[6], "verb")) == 0) {
+			t.printGraph();
+		}
+		cout << "\nsourceGraphFile: " << argv[1] << "\ntargetGraphFile: " << argv[2];
+		cout << "\nSingleMoves: " << singleMove << ", swaps: " << swaps << ", locked input: " << forcedInput << ", initPart: " << initPart << ", DN2PCIoTiR, number of threads: " << numberOfThreads;
+		cout << "\ninitPartFileName: " << argv[4];
+
+		cout << "\n\nInitial partitioning:";
+
+		InferenceRate.printPartitioning(InferenceRate.getInitialPartitioning());
+		cout << "initialCost: " << -InferenceRate.computeCost(InferenceRate.getInitialPartitioning(), false) << "\n";
+		int memoryValid = InferenceRate.validPartitioning(InferenceRate.getInitialPartitioning());
+		for (int i = 0; i < InferenceRate.getNumberOfPartitions(); i++) {
+			cout << "mem[" << i << "]: " << InferenceRate.getValidArray(i) << " ";
+		}
+		cout << "\nmemoryValid: " << memoryValid << "\n\n" << endl;
+	
+		InferenceRate.run(argv[3]);
+
+		cout << "\nBest partitioning found:";
+		InferenceRate.printPartitioning(InferenceRate.getBestPartitioning());
+		cout << "bestCost: " << -InferenceRate.computeCost(InferenceRate.getBestPartitioning(), false) << "\n";
+		memoryValid = InferenceRate.validPartitioning(InferenceRate.getBestPartitioning());
+		for (int i = 0; i < InferenceRate.getNumberOfPartitions(); i++) {
+			cout << "mem[" << i << "]: " << InferenceRate.getValidArray(i) << " ";
+		}
+		cout << "\nmemoryValid: " << memoryValid << "\n\n";
+	}
+
 	return 0;
 }

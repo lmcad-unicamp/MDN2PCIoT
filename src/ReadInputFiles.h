@@ -25,11 +25,11 @@
 class ReadInputFiles {
 
 public:
-	ReadInputFiles(char *fileName, char *targetName);
-	SourceGraph* getSourceGraph();
-	TargetGraph* getTargetGraph();
-	int getNumberOfVertices();
-	int getTargetNumberOfVertices();
+	ReadInputFiles(char *fileName, char *targetName, int numberOfThreads);
+	const SourceGraph* getSourceGraph() const; 
+	const TargetGraph* getTargetGraph() const; 
+	int getNumberOfVertices() const;
+	int getTargetNumberOfVertices() const;
 	~ReadInputFiles();
 
 private:

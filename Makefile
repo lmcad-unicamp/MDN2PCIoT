@@ -1,34 +1,47 @@
 CC = g++
-FLAGS = -O3
+FLAGS = -O3 -fopenmp
 DIR = src
 DIROBJ = obj
-SRC = $(DIR)/SourceGraph.cpp $(DIR)/TargetGraph.cpp $(DIR)/ReadInputFiles.cpp $(DIR)/GenericPartitioningAlgorithm.cpp $(DIR)/Comm.cpp $(DIR)/main.cpp
+SRC = $(DIR)/SourceGraph.cpp $(DIR)/TargetGraph.cpp $(DIR)/ReadInputFiles.cpp $(DIR)/GenericPartitioningAlgorithm.cpp $(DIR)/Comm.cpp $(DIR)/main.cpp $(DIR)/InferenceRate.cpp
 OBJ = $(SRC:.c=.o)
+DIRWIF = write-input-file
 
-run: $(DIR)/main.cpp $(OBJ)
+KLP: $(DIR)/main.cpp $(OBJ)
 	g++ -c $(FLAGS) $(DIR)/SourceGraph.cpp    			     -o $(DIROBJ)/SourceGraph.o
 	g++ -c $(FLAGS) $(DIR)/TargetGraph.cpp    			     -o $(DIROBJ)/TargetGraph.o
 	g++ -c $(FLAGS) $(DIR)/ReadInputFiles.cpp 			     -o $(DIROBJ)/ReadInputFiles.o
 	g++ -c $(FLAGS) $(DIR)/GenericPartitioningAlgorithm.cpp -o $(DIROBJ)/GenericPartitioningAlgorithm.o
 	g++ -c $(FLAGS) $(DIR)/Comm.cpp	 			     -o $(DIROBJ)/Comm.o
+	g++ -c $(FLAGS) $(DIR)/InferenceRate.cpp	 			     -o $(DIROBJ)/InferenceRate.o
 	g++ -c $(FLAGS) $(DIR)/main.cpp						 -o $(DIROBJ)/main.o
-	g++    $(FLAGS) $(OBJ)				             -o KLP
+	g++    $(FLAGS) $(OBJ)				             -o DN2PCIoT
 
-run-debug: 
-	g++ -c -g SourceGraph.cpp    			   -o SourceGraph.o
-	g++ -c -g TargetGraph.cpp    			   -o TargetGraph.o
-	g++ -c -g ReadInputFiles.cpp 			   -o ReadInputFiles.o
-	g++ -c -g GenericPartitioningAlgorithm.cpp -o GenericPartitioningAlgorithm.o
-	g++ -c -g Comm.cpp	 			   -o Comm.o
-	g++    -g $(OBJ)	   	     			   -o KLP
+KLP-debug: 
+	g++ -c -O0 -g -fopenmp $(DIR)/SourceGraph.cpp    			   -o $(DIROBJ)/SourceGraph.o
+	g++ -c -O0 -g -fopenmp $(DIR)/TargetGraph.cpp    			   -o $(DIROBJ)/TargetGraph.o
+	g++ -c -O0 -g -fopenmp $(DIR)/ReadInputFiles.cpp 			   -o $(DIROBJ)/ReadInputFiles.o
+	g++ -c -O0 -g -fopenmp $(DIR)/GenericPartitioningAlgorithm.cpp -o $(DIROBJ)/GenericPartitioningAlgorithm.o
+	g++ -c -O0 -g -fopenmp $(DIR)/Comm.cpp	 			   -o $(DIROBJ)/Comm.o
+	g++ -c -O0 -g -fopenmp $(DIR)/InferenceRate.cpp	 			     -o $(DIROBJ)/InferenceRate.o
+	g++    -O0 -g -fopenmp $(OBJ)	   	     			   -o DN2PCIoT-debug
 
-run-thirty: KLP
-	for number in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do \
-		./KLP $$number ; \
-	done
-                            
 #prog.x: main.o math.o log.o
-#	ld -dynamic-linker /lib64/ld-linux-x86-64.so.2 /usr/lib/x86_64-linux-gnu/crt1.o /usr/lib/x86_64-linux-gnu/crti.o -L/usr/lib64 main.o math.o log.o -lc /usr/lib/x86_64-linux-gnu/crtn.o -o prog.x
+#	ld -dynamic-linker /lib64/ld-linux-x86-64.so.2 /usr/lib/x86_64-linux-O0 -gnu/crt1.o /usr/lib/x86_64-linux-O0 -gnu/crti.o -L/usr/lib64 main.o math.o log.o -lc /usr/lib/x86_64-linux-O0 -gnu/crtn.o -o prog.x
 	
 clean: 
-	rm -f *.o KLP
+	rm -f $(DIROBJ)/*.o DN2PCIoT DN2PCIoT-debug $(DIRWIF)/*.o writeInputFile*
+
+writeInputFile_LeNet_1x1: $(DIRWIF)/sourceGraph.c $(DIRWIF)/write_input_file_LeNet_1x1.c
+	gcc -c $(DIRWIF)/sourceGraph.c 		  -o $(DIRWIF)/sourceGraph.o
+	gcc -c $(DIRWIF)/write_input_file_LeNet_1x1.c   -o $(DIRWIF)/write_input_file_LeNet_1x1.o
+	gcc    $(DIRWIF)/sourceGraph.o $(DIRWIF)/write_input_file_LeNet_1x1.o -o writeInputFile_LeNet_1x1
+
+writeInputFile_LeNet_2x2: $(DIRWIF)/sourceGraph.c $(DIRWIF)/write_input_file_LeNet_2x2.c
+	gcc -c $(DIRWIF)/sourceGraph.c 		  -o $(DIRWIF)/sourceGraph.o
+	gcc -c $(DIRWIF)/write_input_file_LeNet_2x2.c   -o $(DIRWIF)/write_input_file_LeNet_2x2.o
+	gcc    $(DIRWIF)/sourceGraph.o $(DIRWIF)/write_input_file_LeNet_2x2.o -o writeInputFile_LeNet_2x2
+
+writeInputFileSBAC: $(DIRWIF)/sourceGraph.c $(DIRWIF)/write_input_file_LeNet-SBAC-PAD-2018.c
+	gcc -c $(DIRWIF)/sourceGraph.c 		  -o $(DIRWIF)/sourceGraph.o
+	gcc -c $(DIRWIF)/write_input_file_LeNet-SBAC-PAD-2018.c   -o $(DIRWIF)/write_input_file_LeNet-SBAC-PAD-2018.o
+	gcc    $(DIRWIF)/sourceGraph.o $(DIRWIF)/write_input_file_LeNet-SBAC-PAD-2018.o -o writeInputFile_LeNet-SBAC-PAD-2018
