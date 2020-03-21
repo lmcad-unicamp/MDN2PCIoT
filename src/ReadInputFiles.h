@@ -27,7 +27,7 @@ class ReadInputFiles {
 public:
 	ReadInputFiles(char *fileName, char *targetName, int numberOfThreads);
 	const SourceGraph* getSourceGraph() const; 
-	const TargetGraph* getTargetGraph() const; 
+	const TargetGraph* getTargetGraph() const;
 	int getNumberOfVertices() const;
 	int getTargetNumberOfVertices() const;
 	~ReadInputFiles();
@@ -36,4 +36,3 @@ private:
 	SourceGraph *inputGraph;
 	TargetGraph *machines;
 };
-

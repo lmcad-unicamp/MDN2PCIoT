@@ -26,7 +26,7 @@
 #include <malloc.h>
 #include "TargetGraph.h"
 
-/* ADJACENCY LIST REPRESENTATION: the function GRAPHinit() builds a graph with vertices 0 1 .. V-1 and no arc. */
+	/* ADJACENCY LIST REPRESENTATION: the function GRAPHinit() builds a graph with vertices 0 1 .. V-1 and no arc. */
 TargetGraph::TargetGraph(int n, int nThreads) { 
    vertex v;
 
@@ -122,6 +122,16 @@ int TargetGraph::getMemory(int machine) const {
 	return memory[machine];
 }
 
+int TargetGraph::getMinMemory() const {
+	int minMem = 0;
+
+	for (int i = 1; i < V; i++) {
+		if (memory[i] < memory[minMem])
+			minMem = i;
+	}
+	return memory[minMem];
+}
+
 /* Updates assigned */
 void TargetGraph::setAssigned(int partition, int device) {
 	assigned[partition] = device;
@@ -145,7 +155,31 @@ int TargetGraph::getConnectionWeight(int src, int dst) const {
 	return connectionMatrix[src][dst];
 }
 
+void TargetGraph::printGraphHeader() const {
+	int i=0;
+	targetLink aux;
+
+	std::cout << "\nTarget: V=" << V << "\n";
+
+	for (i = 0; i < 1; i++) {
+		std::cout << "Vertex[" << i << "]: "; 
+		aux = adj[i];
+		while(aux != NULL){
+			std::cout << aux->w << " ";
+			aux = aux->next;
+		}
+		std::cout << "Computational power: " << computationalWeight[i] << ", Memory: " << memory[i];
+		std::cout << "\n";
+	}
+	std::cout << "Connection matrix: \n";
+}
+
 void TargetGraph::printGraph() const {
+/*int main(){
+	targetGraph G;
+	G=targetGraphInit(3);
+	targetGraphInsertArc(G, 0, 1);
+	targetGraphInsertArc(G, 0, 2);*/
 
 	int i=0;
 	targetLink aux;

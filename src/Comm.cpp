@@ -37,7 +37,7 @@
 
 using namespace std;
 
-Comm::Comm(SourceGraph *srcG, int nPartitions, bool movingNodes, bool exchangingNodes, TargetGraph *tgtG, int nVertices, int forcedInput, bool initPart, char *verbose, char *initPartFile, int numberOfThreads) 
+Comm::Comm(SourceGraph *srcG, int nPartitions, bool movingNodes, bool exchangingNodes, TargetGraph *tgtG, int nVertices, int forcedInput, bool initPart, char *verbose, char *initPartFile, int numberOfThreads, bool multilevel, int *multilevelPart, int higherLevelNumberOfVertices, int defPart, int *p) 
 	: GenericPartitioningAlgorithm(nVertices, nPartitions, movingNodes, exchangingNodes, numberOfThreads),
 	target(tgtG), sourceG(srcG) 
 {
@@ -45,6 +45,24 @@ Comm::Comm(SourceGraph *srcG, int nPartitions, bool movingNodes, bool exchanging
 	if(validArray == NULL) {
 		cout << "\n validArray could not be allocated! \n";
 		exit(EXIT_FAILURE);	
+	}
+
+	validArrayPerThread = (int **) malloc(getNumberOfThreads() * sizeof(int *));
+	if (validArrayPerThread == NULL) {
+		cout << "\n validArrayPerThread could not be allocated! \n";
+		exit(EXIT_FAILURE);	
+	}
+	for (int i = 0; i < getNumberOfThreads(); i++) {
+		validArrayPerThread[i] = (int *) malloc(nPartitions * sizeof(int));
+		if (validArrayPerThread[i] == NULL) {
+			cout << "\n validArrayPerThread[i] could not be allocated! \n";
+			exit(EXIT_FAILURE);	
+		}		
+	}
+	for (int i = 0; i < getNumberOfThreads(); i++) {
+		for (int j = 0; j < nPartitions; j++) {
+			validArrayPerThread[i][j] = 0;
+		}
 	}
 
 	validIndexes = (int *) calloc(nPartitions, sizeof(int));
@@ -94,7 +112,52 @@ Comm::Comm(SourceGraph *srcG, int nPartitions, bool movingNodes, bool exchanging
 		}
 	}
 
-	setInitialPartitionings(forcedInput, initPart, initPartFile);
+	sharedMemoryPerPartitionPerThread = (bool ***) malloc(getNumberOfThreads() * sizeof(bool **));
+	if (sharedMemoryPerPartitionPerThread == NULL) {
+		cout << "\n sharedMemoryPerPartitionPerThread could not be allocated! \n";
+		exit(EXIT_FAILURE);	
+	}
+	for (int i = 0; i < getNumberOfThreads(); i++) {
+		sharedMemoryPerPartitionPerThread[i] = (bool **) malloc(nPartitions * sizeof(bool *));
+		if (sharedMemoryPerPartitionPerThread[i] == NULL) {
+			cout << "\n sharedMemoryPerPartitionPerThread[i] could not be allocated! \n";
+			exit(EXIT_FAILURE);	
+		}		
+	}
+	for (int i = 0; i < getNumberOfThreads(); i++) {
+		for (int j = 0; j < nPartitions; j++) {
+			sharedMemoryPerPartitionPerThread[i][j] = (bool *) malloc(sourceG->getNumberOfLayers() * sizeof(bool));
+			if (sharedMemoryPerPartitionPerThread[i][j] == NULL) {
+						cout << "\n sharedMemoryPerPartitionPerThread[i][j] could not be allocated! \n";
+						exit(EXIT_FAILURE);	
+			}		
+		}
+	}
+	for (int t = 0; t < getNumberOfThreads(); t++) {
+		for (int i = 0; i < getNumberOfPartitions(); i++) {
+			for (int j = 0; j < sourceG->getNumberOfLayers(); j++) {
+				sharedMemoryPerPartitionPerThread[t][i][j] = false;
+			}
+		}
+	}
+
+	nodeLayer = (bool *) malloc(sourceG->getNumberOfLayers() * sizeof(bool));
+	if (nodeLayer == NULL) {
+		cout << "\n nodeLayer could not be allocated! \n";
+		exit(EXIT_FAILURE);	
+	}
+	nodeLayerMinus1 = (bool *) malloc(sourceG->getNumberOfLayers() * sizeof(bool));
+	if (nodeLayerMinus1 == NULL) {
+		cout << "\n nodeLayerMinus1 could not be allocated! \n";
+		exit(EXIT_FAILURE);	
+	}	
+	iLayer = (bool *) malloc(sourceG->getNumberOfLayers() * sizeof(bool));
+	if (iLayer == NULL) {
+		cout << "\n iLayer could not be allocated! \n";
+		exit(EXIT_FAILURE);	
+	}		
+
+	setInitialPartitionings(forcedInput, initPart, initPartFile, multilevel, multilevelPart, higherLevelNumberOfVertices, defPart, p);
 
 	// to use in validPartitioning()
 	sortedTargetMem = (int *) malloc(getNumberOfPartitions() * sizeof(int));
@@ -126,32 +189,23 @@ Comm::Comm(SourceGraph *srcG, int nPartitions, bool movingNodes, bool exchanging
 		exit(EXIT_FAILURE);	
 	}
 	for (int i = 0; i < getNumberOfThreads(); i++)
-		partitionGraphPerThread[i] = new SourceGraph(getNumberOfPartitions(), getNumberOfPartitions());
+		partitionGraphPerThread[i] = new SourceGraph(getNumberOfPartitions(), getNumberOfPartitions(), getNumberOfPartitions(), true);
 
 	// build partitionGraph based on SourceG (input graph); eliminates redundant edges	
-	partitionGraph = new SourceGraph(getNumberOfPartitions(), getNumberOfPartitions());
+	partitionGraph = new SourceGraph(getNumberOfPartitions(), getNumberOfPartitions(), getNumberOfPartitions(), true);
 
 	double currentCost = 0;
 	bool inserted;
 	int cost, costRed, costMETIS = 0;
 	for (int i = 0; i < getNumberOfVertices(); i++) {
-		int iLayer = 0;
-		for (int j = 0; j < sourceG->getNumberOfLayers(); j++) {
-			if (iLayer == sourceG->getNumberOfLayers() - 1)
-				break;
-			if (i < sourceG->getLayerInitialPos(j + 1)) {
-				break;
-			} else {
-				iLayer++;
-			}
-		}
+		//int iLayer = sourceG->getLayerOfVertex(i);
 		for (links nodeAdj = sourceG->getAdjOfVertex(i); nodeAdj != NULL; nodeAdj = nodeAdj->next) {
-			if (getCurrentPartitioning(i) != getCurrentPartitioning(nodeAdj->w) && nodeAdj->w > i) {
-				inserted = partitionGraph->insertArcSrc(getCurrentPartitioning(i), getCurrentPartitioning(nodeAdj->w), nodeAdj->edgeWeight, nodeAdj->redundantNeurons, &cost, sourceG->getOriginalDepth(iLayer), iLayer, sourceG->getLayerInitialPos(iLayer), sourceG->getLayerWidth(iLayer), sourceG->getLayerHeight(iLayer), i);
-				costMETIS += cost;
+			if (getCurrentPartitioning(i) != getCurrentPartitioning(nodeAdj->w) /*&& nodeAdj->w > i*/) {
+				inserted = partitionGraph->insertArcSrcMlvlPartitionGraph(getCurrentPartitioning(i), getCurrentPartitioning(nodeAdj->w), nodeAdj->edgeWeight, i, nodeAdj->sourceMlvl);
+				costMETIS += nodeAdj->edgeWeight;
 				if (inserted) {
-					//currentCost += nodeAdj->edgeWeight;
-					currentCost += cost;
+					currentCost += nodeAdj->edgeWeight;
+					//currentCost += cost;
 					if ((strcmp(verbose, "verb")) == 0) {
 						//cout << "\n i: " << i << " nodeAdj: " << nodeAdj->w << " eW: " << nodeAdj->edgeWeight << " redN: " << nodeAdj->redundantNeurons << " cost: " << currentCost;
 					}
@@ -163,14 +217,10 @@ Comm::Comm(SourceGraph *srcG, int nPartitions, bool movingNodes, bool exchanging
 		//partitionGraph->printGraphSrc();	
 	}
 
-	cout << "\n costMETIS: " << costMETIS;
-	currentCost = computeCost(getInitialPartitioning(), false);
+	cout << "\n costMETIS: " << costMETIS << ", cost: " << currentCost;
+	Cost = computeCost(getInitialPartitioning(), false, true);
 	//cout << "\n cost: " << currentCost;
 }
-
-/*SourceGraph *Comm::getSourceGraph() {
-	return sourceG;
-}*/
 
 void Comm::setSourceGraph(SourceGraph *srcG) {
 	sourceG = srcG;
@@ -192,105 +242,336 @@ void Comm::seed_rng(void)
     close(fp);
 }
 
-void Comm::setInitialPartitionings(int forcedInput, bool initPart, char *initPartFile) {
+void Comm::setInitialPartitionings(int forcedInput, bool initPart, char *initPartFile, bool multilevel, int *multilevelPart, int higherLevelNumberOfVertices, int defPart, int *p) {
 	int i, *j=NULL, k, r, l;
 
-	setForcedInputSize(forcedInput);
-	if (initPart == false) {
-		// random, memory valid but different amount of vertices per partition
-		// force input layer (image) to be in the same device/partition
-		int p = 0;
-		i = 0;
-		while (i < getForcedInputSize()) {
-			if (validArray[p] < target->getMemory(p)) {
-				setVertexInitialPartitionings(i, p);
-				validArray[p] += sourceG->getMemory(i);
-			} else {
-				p++;	
-			}
-			i++;
-		}	
-		seed_rng();
-		//int shared;
-		for (i = getForcedInputSize(); i < getNumberOfVertices(); i++) {
-			r = rand();
+	if (!multilevel) {
 
-			// finds the layer i belongs
-			int layer = 0, shared = 0;
-			for (int j = 0; j < sourceG->getNumberOfLayers(); j++) {
-				if (layer == sourceG->getNumberOfLayers() - 1)
-					break;
-				if (i < sourceG->getLayerInitialPos(j + 1)) {
-					break;
+		setForcedInputSize(forcedInput);
+		if (initPart == false) {
+			// random partitioning
+
+			// random, memory valid but different amount of vertices per partition
+			// force input layer (image) to be in the same device/partition
+			/*int p = 0;
+			i = 0;
+			while (i < getForcedInputSize()) {
+				if (validArray[p] < target->getMemory(p)) {
+					setVertexInitialPartitionings(i, p);
+					validArray[p] += sourceG->getMemory(i);
 				} else {
-					layer++;
+					p++;	
 				}
-			}
-			//cout << "\n layer: " << layer;
-			if (sharedMemoryPerPartition[r % getNumberOfPartitions()][layer] == false) {
-				//sharedMemoryPerPartition[r % getNumberOfPartitions()][layer] = true;
-				shared = sourceG->getSharedParam(layer);
-				//cout << " sMPP: false"; 
-			}
-			//else
-				//cout << " sMPP: true";
-			//cout << " shared: " << shared;
-			int setp;
-			if (validArray[r % getNumberOfPartitions()] + sourceG->getMemory(i) + shared < target->getMemory(r % getNumberOfPartitions())) {
-				if (sharedMemoryPerPartition[r % getNumberOfPartitions()][layer] == false) {
-					sharedMemoryPerPartition[r % getNumberOfPartitions()][layer] = true;
+				i++;
+			}	
+
+			seed_rng();
+			for (i = getForcedInputSize(); i < getNumberOfVertices(); i++) {
+				r = rand();
+
+				// finds the layers i belongs
+				bool shrdppv[sourceG->getNumberOfLayers()];
+				int shared = 0;
+				sourceG->getSharedParamArray(i, shrdppv);
+
+				for (l = 0; l < sourceG->getNumberOfLayers(); l++) {
+					if (shrdppv[l] == true && sharedMemoryPerPartition[r % getNumberOfPartitions()][l] == false) {
+						shared += sourceG->getSharedParam(l);
+					}
 				}
-				setVertexInitialPartitionings(i, r % getNumberOfPartitions());
-				validArray[r % getNumberOfPartitions()] += sourceG->getMemory(i) + shared;
-				//cout << "\n i: "<< i << " v[" << r % getNumberOfPartitions() << "]: " << validArray[r % getNumberOfPartitions()];
-			} else {
-				bool set = false;
-				if (r % getNumberOfPartitions() == getNumberOfPartitions() - 1) {
-					setp = - r % getNumberOfPartitions();
-				} else {
-					setp = 1;
-				}
-				int count = 0;
-				while(!set) {
-					if (r % getNumberOfPartitions() + setp == getNumberOfPartitions()) {
-						setp = - r % getNumberOfPartitions();
-						count++;
-						if (count == getNumberOfPartitions()) {
-							break;
+
+				int setp;
+				if (validArray[r % getNumberOfPartitions()] + sourceG->getMemory(i) + shared <= target->getMemory(r % getNumberOfPartitions())) {
+					for (l = 0; l < sourceG->getNumberOfLayers(); l++) {
+						if (shrdppv[l] == true && sharedMemoryPerPartition[r % getNumberOfPartitions()][l] == false) {
+							sharedMemoryPerPartition[r % getNumberOfPartitions()][l] = true;
 						}
 					}
-					if (validArray[r % getNumberOfPartitions() + setp] + sourceG->getMemory(i) + shared < target->getMemory(r % getNumberOfPartitions() + setp)) {
-						setVertexInitialPartitionings(i, r % getNumberOfPartitions() + setp);
-						validArray[r % getNumberOfPartitions() + setp] += sourceG->getMemory(i) + shared;
-						set = true;
+					setVertexInitialPartitionings(i, r % getNumberOfPartitions());
+					validArray[r % getNumberOfPartitions()] += sourceG->getMemory(i) + shared;
+					cout << "\n i: "<< i << " v[" << r % getNumberOfPartitions() << "]: " << validArray[r % getNumberOfPartitions()] << " shared: " << shared;
+				} else {
+					int part;
+					bool set = false;
+					if (r % getNumberOfPartitions() == getNumberOfPartitions() - 1) {
+						setp = - r % getNumberOfPartitions();
 					} else {
-							setp++;
+						setp = 1;
+					}
+					int count = 0;
+					while(!set) {
+						int minRemainder = 2147483647;;
+						if (r % getNumberOfPartitions() + setp == getNumberOfPartitions()) {
+							setp = - r % getNumberOfPartitions();
+							count++;
+							if (count == getNumberOfPartitions()) {
+								break;
+							}
+						}
+						shared = 0;
+						for (l = 0; l < sourceG->getNumberOfLayers(); l++) {
+							if (shrdppv[l] == true && sharedMemoryPerPartition[r % getNumberOfPartitions() + setp][l] == false) {
+								shared += sourceG->getSharedParam(l);
+							}
+						}
+						if (validArray[r % getNumberOfPartitions() + setp] + sourceG->getMemory(i) + shared < target->getMemory(r % getNumberOfPartitions() + setp)) {
+							for (l = 0; l < sourceG->getNumberOfLayers(); l++) {
+								if (shrdppv[l] == true && sharedMemoryPerPartition[r % getNumberOfPartitions() + setp][l] == false) {
+									sharedMemoryPerPartition[r % getNumberOfPartitions() + setp][l] = true;
+								}
+							}
+							setVertexInitialPartitionings(i, r % getNumberOfPartitions() + setp);
+							validArray[r % getNumberOfPartitions() + setp] += sourceG->getMemory(i) + shared;
+							set = true;
+							cout << "\n i: "<< i << " v[" << r % getNumberOfPartitions() + setp << "]: " << validArray[r % getNumberOfPartitions() + setp] << " shared: " << shared;
+						} else {
+								int remainder = target->getMemory(r % getNumberOfPartitions() + setp) - (validArray[r % getNumberOfPartitions() + setp] + sourceG->getMemory(i) + shared);
+								if (remainder < minRemainder) {
+									minRemainder = remainder;
+									part = r % getNumberOfPartitions() + setp;
+								}
+								setp++;
+						}
+					}
+					if (count == getNumberOfPartitions()) {
+						cout << "\n No valid initial partitioning was found! \n\n";
+						//exit(1);
+
+						// may call best fit here
+
+						shared = 0;
+						for (l = 0; l < sourceG->getNumberOfLayers(); l++) {
+							if (shrdppv[l] == true && sharedMemoryPerPartition[part][l] == false) {
+								shared += sourceG->getSharedParam(l);
+							}
+						}
+
+						for (l = 0; l < sourceG->getNumberOfLayers(); l++) {
+							if (shrdppv[l] == true && sharedMemoryPerPartition[part][l] == false) {
+								sharedMemoryPerPartition[part][l] = true;
+							}
+						}
+						setVertexInitialPartitionings(i, part);
+						validArray[part] += sourceG->getMemory(i) + shared;
+						set = true;
+						cout << "\n i: "<< i << " v[" << part << "]: " << validArray[part] << " shared: " << shared;
 					}
 				}
-				if (count == getNumberOfPartitions()) {
-					cout << "\n No valid initial partitioning was found! \n\n";
-					exit(1);
+			}*/
+
+			// TODO: Graph growing (Breadth-first search - reduce communication)
+			// visited: 0 - white (nondiscovered vertices), -1 - gray (discovered vertices), -2 - black (finished vertices)
+			/*int *visited = (int *) calloc(getNumberOfVertices(), sizeof(int));
+			if (visited == NULL) {
+				cout << "\n visited could not be allocated! \n";
+				exit(EXIT_FAILURE);	
+			}
+			// queue
+			int *queue = (int *) calloc(getNumberOfVertices(), sizeof(int));
+			if (queue == NULL) {
+				cout << "\n queue could not be allocated! \n";
+				exit(EXIT_FAILURE);	
+			}
+			int front = -1;
+			int rear = -1;
+			int queueSize = 0, p = 0, q = 0;
+			for (int i = 0; i < getNumberOfVertices(); i++) {
+				// start BFS with vertex i, if it has not been discovered yet (white), paint it in gray
+				if (visited[i] == 0) {
+					visited[i] = -1;
+				} else {
+					continue;
 				}
-				//cout << "\n i: "<< i << " v[" << r % getNumberOfPartitions() + setp << "]: " << validArray[r % getNumberOfPartitions() + setp];
+
+				// Restart queue "queue"
+				queueSize = 0;
+				// Enqueue i
+				queue[queueSize] = i;
+				queueSize++;
+				int queuePosition = 0;
+				int u;
+
+				while (queueSize != 0) {
+					// Dequeue first vertex of queue
+					u = queue[queuePosition];
+					queuePosition++;
+
+					// Search for the adjacency of u
+					for (links nodeAdj = sourceG->getAdjOfVertex(u); nodeAdj != NULL; nodeAdj = nodeAdj->next) {
+						if (visited[nodeAdj->w] == 0) {
+							// paint vertex w in visited gray
+							visited[nodeAdj->w] = -1;
+		
+							// Enqueue vertex w
+							queue[queueSize] = nodeAdj->w;
+							queueSize++;
+						}					
+					}
+					visited[u] = -2;
+
+					// finds the layers u belongs
+					bool shrdppv[sourceG->getNumberOfLayers()];
+					sourceG->getSharedParamArray(u, shrdppv);
+
+					// find the correct number of shared parameters according to the parameters that the partition already contain
+					int shared = 0;
+					for (l = 0; l < sourceG->getNumberOfLayers(); l++) {
+						if (shrdppv[l] == true && sharedMemoryPerPartition[p][l] == false) {
+							shared += sourceG->getSharedParam(l);
+						}
+					}
+
+					// find a partition to assign vertex u
+					q = 0;
+					while (q < getNumberOfPartitions()) {
+						// check if vertex u plus the memory required by the shared parameters fit the partition p memory
+						if (validArray[p] + sourceG->getMemory(u) + shared < target->getMemory(p)) {
+							// update the sharedMemoryPerPartition[p] array
+							for (l = 0; l < sourceG->getNumberOfLayers(); l++) {
+								if (shrdppv[l] == true && sharedMemoryPerPartition[p][l] == false) {
+									sharedMemoryPerPartition[p][l] = true;
+								}
+							}
+							// Assign vertex u to partition p
+							setVertexInitialPartitionings(u, p);
+							validArray[p] += sourceG->getMemory(u) + shared;
+							cout << "\n u: "<< u << " v[" << p << "]: " << validArray[p];
+							break;
+						} else {
+							p++;
+							q++;
+						}
+						if (q >= getNumberOfPartitions()) {
+							cout << "\n No valid initial partitioning was found! \n\n";
+							exit(1);
+						}
+					}
+				}
+			}*/
+			
+			if(defPart == false) {
+				// best fit
+				//seed_rng();
+				for (int i = 0; i < getNumberOfVertices(); i++) {
+
+					// finds the layers i belongs
+					bool shrdppv[sourceG->getNumberOfLayers()];
+					int shared = 0;
+					sourceG->getSharedParamArray(i, shrdppv);
+
+					int part = 0;
+					int minRemainder = 2147483647;
+					// choose a partition to which vertex i fits
+					for (int p = 0; p < getNumberOfPartitions(); p++) {
+
+						// find the correct number of shared parameters according to the parameters that the partition already contain
+						shared = 0;
+						for (l = 0; l < sourceG->getNumberOfLayers(); l++) {
+							if (shrdppv[l] == true && sharedMemoryPerPartition[p][l] == false) {
+								shared += sourceG->getSharedParam(l);
+							}
+						}
+
+						// check if vertex i plus the memory required by the shared parameters fit the partition p memory
+						if (validArray[p] + sourceG->getMemory(i) + shared < target->getMemory(p)) {
+							// checks if vertex i is assigned to partition p such that the remainder memory of partitions is minimum
+							if (target->getMemory(p) - validArray[p] - sourceG->getMemory(i) - shared < minRemainder) {
+								minRemainder = target->getMemory(p) - validArray[p] - sourceG->getMemory(i) - shared; // < minRemainder;
+								part = p;
+
+							}
+						} /*else if (p == getNumberOfPartitions() - 1) {
+							cout << "\n No valid initial partitioning was found! \n\n";
+							//exit(1);
+						}*/
+					}
+
+					// find the correct number of shared parameters according to the parameters that the partition already contain
+					shared = 0;
+					for (l = 0; l < sourceG->getNumberOfLayers(); l++) {
+						if (shrdppv[l] == true && sharedMemoryPerPartition[part][l] == false) {
+							shared += sourceG->getSharedParam(l);
+						}
+					}
+
+					// check if vertex i plus the memory required by the shared parameters fit the partition p memory
+					if (validArray[part] + sourceG->getMemory(i) + shared < target->getMemory(part)) {	
+						// update the sharedMemoryPerPartition[part] array
+						for (l = 0; l < sourceG->getNumberOfLayers(); l++) {
+							if (shrdppv[l] == true && sharedMemoryPerPartition[part][l] == false) {
+								sharedMemoryPerPartition[part][l] = true;
+							}
+						}
+						setVertexInitialPartitionings(i, part);
+						validArray[part] += sourceG->getMemory(i) + shared;
+						//cout << "\n i: "<< i << " v[" << part << "]: " << validArray[part];					
+					}
+				}
+			} else {
+				for (int i = 0; i < getNumberOfVertices(); i++) {
+					setVertexInitialPartitionings(i, p[i]);
+
+					// find the correct number of shared parameters according to the parameters that the partition already contain
+					bool shrdppv[sourceG->getNumberOfLayers()];
+					int shared = 0;
+					sourceG->getSharedParamArray(i, shrdppv);
+					for (l = 0; l < sourceG->getNumberOfLayers(); l++) {
+						if (shrdppv[l] == true && sharedMemoryPerPartition[p[i]][l] == false) {
+							shared += sourceG->getSharedParam(l);
+						}
+					}
+					validArray[p[i]] += sourceG->getMemory(i) + shared;
+				}
+			}
+		//}
+
+		} else if (initPart) {
+			// input a specific initial partitioning
+			FILE *fp;
+			fp = fopen(initPartFile, "r");
+			if(fp == NULL){
+				cout << "initPart.txt file could not be open! \n";
+				exit(EXIT_FAILURE);
+			}
+
+			for (i = 0; i < getNumberOfVertices(); i++) {
+				l = fscanf(fp, "%d ", &k);
+				setVertexInitialPartitionings(i, k);
+			}
+			fclose(fp);
+			fp=NULL;
+		}
+	} else {
+		for (int j = 0; j < getNumberOfVertices(); j++) {	
+			for (int i = 0; i < higherLevelNumberOfVertices; i++) {
+				if (sourceG->getMap(j) == i) {
+					setVertexInitialPartitionings(j, multilevelPart[i]);
+				}
 			}
 		}
-	}
 
-	else if (initPart) {
-		// input a specific initial partitioning
-		FILE *fp;
-		fp = fopen(initPartFile, "r");
-		if(fp == NULL){
-			cout << "initPart.txt file could not be open! \n";
-			exit(EXIT_FAILURE);
+		int lockedArraySize = 0;
+		for (int j = 0; j < getNumberOfVertices(); j++) {
+			bool locked = true;
+			for (links nodeAdj = sourceG->getAdjOfVertex(j); nodeAdj != NULL; nodeAdj = nodeAdj->next) {
+				//cout << "\nj: " << j << ", adj: " << nodeAdj->w << ", p[j]: " << getCurrentPartitioning(j) << ", p[adj]: " << getCurrentPartitioning(nodeAdj->w);
+				if (getCurrentPartitioning(j) != getCurrentPartitioning(nodeAdj->w) && nodeAdj->w > j) {
+					locked = false;
+					break;
+				}
+			}
+			if (locked == true) {
+				setLockedArray(lockedArraySize, j);
+				lockedArraySize++;
+			}
 		}
+		setLockedArraySize(lockedArraySize);
 
-		for (i = 0; i < getNumberOfVertices(); i++) {
-			l = fscanf(fp, "%d ", &k);
-			setVertexInitialPartitionings(i, k);
-		}
-		fclose(fp);
-		fp=NULL;
+		cout << "\n Free vertices: " << getNumberOfVertices() - lockedArraySize;
+
+		/*for (int j = 0; j < lockedArraySize; j++) {
+			cout << "\ni: " << getLockedArray(j);
+		}*/
 	}
 }
 
@@ -298,69 +579,74 @@ void Comm::setInitialPartitionings(int forcedInput, bool initPart, char *initPar
 /* For Comm, the cost is the amount of (external) communication 
 	among partitions */
 //double Comm::ComputeCost(Partitioning_t& p) {
-double Comm::computeCost(const int *partitioning, bool openmp) {
+double Comm::computeCost(const int *partitioning, bool openmp, bool nonredundantEdges) {
 	double currentCost = 0;
 	bool inserted;
 
 	if (openmp) {
-		delete partitionGraphPerThread[omp_get_thread_num()];
-		// build partitionGraph based on SourceG (input graph)
-		partitionGraphPerThread[omp_get_thread_num()] = new SourceGraph(getNumberOfPartitions(), getNumberOfPartitions());
+		if (nonredundantEdges) {
+			delete partitionGraphPerThread[omp_get_thread_num()];
+			// build partitionGraph based on SourceG (input graph)
+			partitionGraphPerThread[omp_get_thread_num()] = new SourceGraph(getNumberOfPartitions(), getNumberOfPartitions(), getNumberOfPartitions(), true);
 
-		//currentCost = 0;
-		int cost = 0;
-		for (int i = 0; i < getNumberOfVertices(); i++) {
-			int iLayer = 0;
-			for (int j = 0; j < sourceG->getNumberOfLayers(); j++) {
-				if (iLayer == sourceG->getNumberOfLayers() - 1)
-					break;
-				if (i < sourceG->getLayerInitialPos(j + 1)) {
-					break;
-				} else {
-					iLayer++;
-				}
-			}
-			for (links nodeAdj = sourceG->getAdjOfVertex(i); nodeAdj != NULL; nodeAdj = nodeAdj->next) {
-				if (partitioning[i] != partitioning[nodeAdj->w] && nodeAdj->w > i) {
-					inserted = partitionGraphPerThread[omp_get_thread_num()]->insertArcSrc(partitioning[i], partitioning[nodeAdj->w], nodeAdj->edgeWeight, nodeAdj->redundantNeurons, &cost, sourceG->getOriginalDepth(iLayer), iLayer, sourceG->getLayerInitialPos(iLayer), sourceG->getLayerWidth(iLayer), sourceG->getLayerHeight(iLayer), i);
-					if (inserted) {
-						//currentCost += nodeAdj->edgeWeight;
-						currentCost += cost;
-						//cout << "\n i: " << i << " nodeAdj: " << nodeAdj->w << " eW: " << nodeAdj->edgeWeight << " redN: " << nodeAdj->redundantNeurons << " cost: " << currentCost;
+			for (int i = 0; i < getNumberOfVertices(); i++) {
+				for (links nodeAdj = sourceG->getAdjOfVertex(i); nodeAdj != NULL; nodeAdj = nodeAdj->next) {
+					if (partitioning[i] != partitioning[nodeAdj->w] /*&& nodeAdj->w > i*/) {
+						inserted = partitionGraphPerThread[omp_get_thread_num()]->insertArcSrcMlvlPartitionGraph(partitioning[i], partitioning[nodeAdj->w], nodeAdj->edgeWeight, i, nodeAdj->sourceMlvl);
+						if (inserted) {
+							currentCost += nodeAdj->edgeWeight;
+							//cout << "\n i: " << i << " nodeAdj: " << nodeAdj->w << " eW: " << nodeAdj->edgeWeight << " cost: " << currentCost;
+						}
 					}
 				}
 			}
+		} else {
+			// considers all edges to compute cost, even if it is a redundant edge, i.e., an edge that comes from the same vertex and go to the same partition
+			double cost = 0;
+
+			for (unsigned a = 0; a < sourceG->getNumberOfVertices(); a++) {
+				for (links nodeAdj = sourceG->getAdjOfVertex(a); nodeAdj != NULL; nodeAdj = nodeAdj->next) {
+					if (partitioning[nodeAdj->w] != partitioning[a]) {
+						//cout << "\n a: " << a << " edge: " << nodeAdj->w << " cost: " << cost << " eW: " << nodeAdj->edgeWeight;
+						cost += nodeAdj->edgeWeight;
+					}
+				}
+			}
+			//cout << "\ncost: " << cost;
+			return cost;
 		}
-
 	} else {
+		if (nonredundantEdges) {
+			delete partitionGraph;
+			// build partitionGraph based on SourceG (input graph)
+			partitionGraph = new SourceGraph(getNumberOfPartitions(), getNumberOfPartitions(), getNumberOfPartitions(), true);
 
-		delete partitionGraph;
-		// build partitionGraph based on SourceG (input graph)
-		partitionGraph = new SourceGraph(getNumberOfPartitions(), getNumberOfPartitions());
-
-		//currentCost = 0;
-		int cost = 0;
-		for (int i = 0; i < getNumberOfVertices(); i++) {
-			int iLayer = 0;
-			for (int j = 0; j < sourceG->getNumberOfLayers(); j++) {
-				if (iLayer == sourceG->getNumberOfLayers() - 1)
-					break;
-				if (i < sourceG->getLayerInitialPos(j + 1)) {
-					break;
-				} else {
-					iLayer++;
-				}
-			}
-			for (links nodeAdj = sourceG->getAdjOfVertex(i); nodeAdj != NULL; nodeAdj = nodeAdj->next) {
-				if (partitioning[i] != partitioning[nodeAdj->w] && nodeAdj->w > i) {
-					inserted = partitionGraph->insertArcSrc(partitioning[i], partitioning[nodeAdj->w], nodeAdj->edgeWeight, nodeAdj->redundantNeurons, &cost, sourceG->getOriginalDepth(iLayer), iLayer, sourceG->getLayerInitialPos(iLayer), sourceG->getLayerWidth(iLayer), sourceG->getLayerHeight(iLayer), i);
-					if (inserted) {
-						//currentCost += nodeAdj->edgeWeight;
-						currentCost += cost;
-						//cout << "\n i: " << i << " nodeAdj: " << nodeAdj->w << " eW: " << nodeAdj->edgeWeight << " redN: " << nodeAdj->redundantNeurons << " cost: " << currentCost;
+			for (int i = 0; i < getNumberOfVertices(); i++) {
+				for (links nodeAdj = sourceG->getAdjOfVertex(i); nodeAdj != NULL; nodeAdj = nodeAdj->next) {
+					if (partitioning[i] != partitioning[nodeAdj->w] /**&& nodeAdj->w > i*/) {
+						inserted = partitionGraph->insertArcSrcMlvlPartitionGraph(partitioning[i], partitioning[nodeAdj->w], nodeAdj->edgeWeight, i, nodeAdj->sourceMlvl);
+						if (inserted) {
+							currentCost += nodeAdj->edgeWeight;
+							//cout << "\n i: " << i << " nodeAdj: " << nodeAdj->w << " eW: " << nodeAdj->edgeWeight << " redN: " << nodeAdj->redundantNeurons << " cost: " << currentCost;
+						}
 					}
 				}
 			}
+
+		} else {
+			// considers all edges to compute cost, even if it is a redundant edge, i.e., an edge that comes from the same vertex and go to the same partition
+			double cost = 0;
+
+			for (unsigned a = 0; a < sourceG->getNumberOfVertices(); a++) {
+				for (links nodeAdj = sourceG->getAdjOfVertex(a); nodeAdj != NULL; nodeAdj = nodeAdj->next) {
+					if (partitioning[nodeAdj->w] != partitioning[a]) {
+						//cout << "\n a: " << a << " edge: " << nodeAdj->w << " cost: " << cost << " eW: " << nodeAdj->edgeWeight;
+						cost += nodeAdj->edgeWeight;
+					}
+				}
+			}
+			//cout << "\ncost: " << cost;
+			return cost;
 		}
 	}
 
@@ -374,14 +660,12 @@ double Comm::computeCost(const int *partitioning, bool openmp) {
 
 	cost = 0;
 	for (a = 0; a < sourceG->getNumberOfVertices(); a++) {
-		//if (partitioning[a] == 0) {
-			for (nodeAdj = sourceG->getAdjOfVertex(a); nodeAdj != NULL; nodeAdj = nodeAdj->next) {
-				if (partitioning[nodeAdj->w] != partitioning[a]) {
-					cout << "\n a: " << a << " edge: " << nodeAdj->w << " cost: " << cost << " eW: " << nodeAdj->edgeWeight;
-					cost += nodeAdj->edgeWeight; // * buildNetworkTopology(16, 4, partitioning[a], partitioning[nodeAdj->w]); João
-				}
+		for (nodeAdj = sourceG->getAdjOfVertex(a); nodeAdj != NULL; nodeAdj = nodeAdj->next) {
+			if (partitioning[nodeAdj->w] != partitioning[a]) {
+				cout << "\n a: " << a << " edge: " << nodeAdj->w << " cost: " << cost << " eW: " << nodeAdj->edgeWeight;
+				cost += nodeAdj->edgeWeight; // * buildNetworkTopology(16, 4, partitioning[a], partitioning[nodeAdj->w]); João
 			}
-		//}
+		}
 	}
 	//cout << "\ncost: " << cost;
 	return cost/2;*/
@@ -398,47 +682,63 @@ void Comm::computeRedundantMemoryPerPartition(const int *p) {
 }
 
 void Comm::computeNonredundantMemoryPerPartition(const int *p) {
-	int i, j;
+	int i;
 
-#	pragma omp parallel num_threads(getNumberOfThreads())
+/*#	pragma omp parallel num_threads(getNumberOfThreads())
 	{
-#	pragma omp for
+#	pragma omp for*/
 	for (i = 0; i < getNumberOfPartitions(); i++) {
-		validArray[i] = 0;
-		for (j = 0; j < sourceG->getNumberOfLayers(); j++) {
-			sharedMemoryPerPartition[i][j] = false;
+		validArrayPerThread[omp_get_thread_num()][i] = 0;
+		for (int j = 0; j < sourceG->getNumberOfLayers(); j++) {
+			sharedMemoryPerPartitionPerThread[omp_get_thread_num()][i][j] = false;
 		}
 	}
 
 	// Calculate amount of memory needed for each partition
-	j = 0; // layer
-#	pragma omp for private(j)
+	//j = 0; // layer
+//#	pragma omp for //private(j)
 	for (i = 0; i < sourceG->getNumberOfVertices(); i++) {
-#		pragma omp critical
-		validArray[p[i]] += sourceG->getMemory(i);
+//#		pragma omp critical
+		validArrayPerThread[omp_get_thread_num()][p[i]] += sourceG->getMemory(i);
 
-		j = 0;
+		// Sequential code (initially j = 0 above and sharedMemPerPart[p[i]][j - 1] below
+		/*if (i >= sourceG->getLayerInitialPos(j)) {
+			j++;
+			if (j >= sourceG->getNumberOfLayers()) {
+				j = sourceG->getNumberOfLayers() - 1;
+			}
+		}*/
+
+		/*j = 0;
 		while (j < sourceG->getNumberOfLayers() - 1) {
 			if (i < sourceG->getLayerInitialPos(j + 1)) {
 				break;
 			} else {
 				j++;
 			}
-		}
+		}*/
 
-#		pragma omp critical
-		sharedMemoryPerPartition[p[i]][j] = true;
-	}
-#	pragma omp for private(j)
-	for (i = 0; i < getNumberOfPartitions(); i++) {
-		//cout << "\nThread[" << omp_get_thread_num() << "]";
-		for (j = 0; j < sourceG->getNumberOfLayers(); j++) {
-			if (sharedMemoryPerPartition[i][j] == true) {
-				validArray[i] += sourceG->getSharedParam(j);
+		// finds the layers i belongs
+		bool shrdppv[sourceG->getNumberOfLayers()];
+		sourceG->getSharedParamArray(i, shrdppv);		
+		
+		for (int j = 0; j < sourceG->getNumberOfLayers(); j++) {
+			if (shrdppv[j] == true) {
+//#				pragma omp critical
+				sharedMemoryPerPartitionPerThread[omp_get_thread_num()][p[i]][j] = true;
 			}
 		}
 	}
-	} // pragma
+//#	pragma omp for
+	for (i = 0; i < getNumberOfPartitions(); i++) {
+		//cout << "\nThread[" << omp_get_thread_num() << "]: i: " << i ;
+		for (int j = 0; j < sourceG->getNumberOfLayers(); j++) {
+			if (sharedMemoryPerPartitionPerThread[omp_get_thread_num()][i][j] == true) {
+				validArrayPerThread[omp_get_thread_num()][i] += sourceG->getSharedParam(j);
+			}
+		}
+	}
+	//} // pragma
 }
 
 bool Comm::partitionsFitDevices(const int *p, int *sourceMem, bool openmp) {
@@ -504,9 +804,9 @@ bool Comm::validPartitioning(const int *p) {
 			cout << "\n sourceMem could not be allocated! \n";
 			exit(EXIT_FAILURE);	
 		}
-#		pragma omp parallel for num_threads(getNumberOfThreads())
+//#		pragma omp parallel for num_threads(getNumberOfThreads())
 		for (int a = 0; a < getNumberOfPartitions(); a++) {
-			sourceMem[a] = validArray[a];
+			sourceMem[a] = validArrayPerThread[omp_get_thread_num()][a];
 		}
 
 		// Check if every partition fits to devices
@@ -525,6 +825,32 @@ void Comm::computeDiffNodeMemoryPerPartition(int *partitioning,
 	sourceMem[partitioning[nodeOrK]] += sourceG->getMemory(nodeOrK);
 	sourceMem[originalNodeOrKPartition] -= sourceG->getMemory(nodeOrK);
 
+	// find the layers that node or k belongs (for multilevel KLP)
+	/*bool sumSharedMem[sourceG->getNumberOfLayers()], subtractSharedMem[sourceG->getNumberOfLayers()];
+
+	for (i = 0; i < sourceG->getNumberOfLayers(); i++) {
+		sumSharedMem[i] = true;
+		subtractSharedMem = true;
+	}
+
+	// vertice (node or k) memory
+	sourceMem[partitioning[nodeOrK]] += sourceG->getMemory(nodeOrK);
+	sourceMem[originalNodeOrKPartition] -= sourceG->getMemory(nodeOrK);
+
+	// find the layers that node or k belongs (for multilevel KLP)
+	bool shrdppv[sourceG->getNumberOfLayers()];
+	sourceG->getSharedParamArray(nodeOrK, shrdppv);
+
+	for (i = 0; i < sourceG->getNumberOfVertices(); i++) {
+		if (i == nodeOrK) continue;
+		if (partitioning[i] == partitioning[nodeOrK]) {
+			for (int l = 0; l < sourceG->getNumberOfLayers(); l++) {
+				if (sourceG->getNodeSharedParam(i, l) 
+					sumSharedMem[l] = false;
+			}
+		}		
+	}*/
+
 	// finds the layer node or k belongs
 	for (i = 0; i < sourceG->getNumberOfLayers(); i++) {
 		if (layer == sourceG->getNumberOfLayers() - 1)
@@ -542,6 +868,7 @@ void Comm::computeDiffNodeMemoryPerPartition(int *partitioning,
 	} else {
 		last = sourceG->getLayerInitialPos(layer + 1);
 	}
+
 	// searches if new node or k partition must sum shared memory
 	for (i = sourceG->getLayerInitialPos(layer); i < last; i++) {
 		if (i == nodeOrK) continue;
@@ -618,6 +945,10 @@ bool Comm::diffValidPartitioning(int *partitioning,
 
 int Comm::getValidArray(int i) const {
 	return validArray[i];
+}
+
+int Comm::getValidArrayPerThread(int t, int i) const {
+	return validArrayPerThread[t][i];
 }
 
 int Comm::getValidIndex(int i) const {
@@ -774,6 +1105,15 @@ Comm::~Comm() {
 		free(validArray);
 		validArray = NULL;
 	}
+	if (validArrayPerThread != NULL) {
+		for (int i = 0; i < getNumberOfThreads(); i++) {
+			if (validArrayPerThread[i] != NULL) {
+				free(validArrayPerThread[i]);
+			}
+		}
+		free(validArrayPerThread);
+		validArrayPerThread = NULL;
+	}
 	if (validIndexes != NULL) {
 		free(validIndexes);
 		validIndexes = NULL;
@@ -794,6 +1134,21 @@ Comm::~Comm() {
 		}
 		free(sharedMemoryPerPartition);
 		sharedMemoryPerPartition = NULL;
+	}
+	if (sharedMemoryPerPartitionPerThread != NULL) {
+		for (int t = 0; t < getNumberOfThreads(); t++) {
+			if (sharedMemoryPerPartitionPerThread[t] != NULL) {
+				for (int i = 0; i < getNumberOfPartitions(); i++) {
+					if (sharedMemoryPerPartitionPerThread[t][i] != NULL) {
+						free(sharedMemoryPerPartitionPerThread[t][i]);
+					}
+				}
+				free(sharedMemoryPerPartitionPerThread[t]);
+				sharedMemoryPerPartitionPerThread[t] = NULL;
+			}
+		}
+		free(sharedMemoryPerPartitionPerThread);
+		sharedMemoryPerPartitionPerThread = NULL;
 	}
 	delete partitionGraph;
 	if (partitionGraphPerThread != NULL) {

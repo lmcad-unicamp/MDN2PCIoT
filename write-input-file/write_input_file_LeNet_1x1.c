@@ -195,18 +195,6 @@ int main(int argc, char *argv[]) {
 	for (int i = 0; i < nLayers; i++) {
 		num_vertices += (wi[i] / wiScale[i]) * (hi[i] / hiScale[i]) * (di[i] / diScale[i]);
 	}
-	/*for (int i = initialFullyConnectedLayer; i < nLayers; i++) {
-		num_vertices += di[i] / diScale[i];
-	}*/
-
-	//num_vertices = /*input*/ WI/WscaleI * HI/HscaleI * DI + 
-	//				/*C1*/   WI2/WscaleI2 * HI2/HscaleI2 * DI2 + 
-	//				/*S2*/   WI3/WscaleI3 * HI3/HscaleI3 * DI3 + 
-	//				/*C3*/   WI4/WscaleI4 * HI4/HscaleI4 * DI4 + 
-	//				/*S4*/   WI5/WscaleI5 * HI5/HscaleI5 * DI5 + 
-	//				/*C5*/   DI6/DscaleI6 + 
-	//				/*FC6*/  DI7/DscaleI7 + 
-	//			  /*Output*/ DI8/DscaleI8 +;
 
 	Source_graph = GraphInit(num_vertices);
 	Source_graph->enable_memory = 1;

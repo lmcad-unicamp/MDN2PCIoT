@@ -89,9 +89,6 @@ int main(int argc, char *argv[]) {
 	computationalWeight[6] = 120 + 120;
 	computationalWeight[7] = 84 + 84;
 
-	// input vertices + vertices with 1st layer conv result
-	//num_vertices = WI * HI * DI + ((WI - WF) + 1) * ((HI - HF) + 1) * DF;
-
 	// input vertices + vertices with 1st layer conv result + vertices with 2nd layer subsampling result
 	num_vertices = /*input*/ WI * HI * DI + /*C1*/ ((WI - WF) + 1) * ((HI - HF) + 1) * DF + /*S2*/ ((WI - WF) + 1)/2 * ((HI - HF) + 1)/2 * DF + /*C3*/ ((((WI - WF) + 1)/2 - WF) + 1) * ((((HI - HF) + 1)/2 - HF) + 1) * DF + /*S4*/ ((((WI - WF) + 1)/2 - WF) + 1) * ((((HI - HF) + 1)/2 - HF) + 1) * DF + /*C5*/ 120 + /*FC6*/ 84 + /*Output*/ 10;
 

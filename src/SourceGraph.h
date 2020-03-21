@@ -35,17 +35,20 @@ class SourceGraph {
 
 public:
 	/* ADJACENCY LIST REPRESENTATION: the function GRAPHinit() builds a graph with vertices 0 1 .. V-1 and no arc. */
-	SourceGraph(int n, int nLayers, int nPartitions = 2);
+	SourceGraph(int n, int nLayers, int nPartitions = 2, bool type = false);
 
 	// copy constructor
 	SourceGraph(const SourceGraph &graphToCopy);
 
 	/* The function NEWnode() receives a vertex w and the address next of a node and returns the address of a new node such that a->w == w and a->next == next. */
 	//static link NEWnode(vertex w, link next, int edgeW);
-	links NEWnode(vertex w, links next, int edgeW, int redN, int src=1);
+	links NEWnode(vertex w, links next, int edgeW, /*int redN,*/ int src=-1, int srcMvl=-1);
 	/* ADJACENCY LIST REPRESENTATION: the function GRAPHinsertArc() inserts an arc v-w in graph G. The function supposes that v and w are distinct, positive, and smaller than G->V. If the graph already has an arc v-w, the function does not do anything. */
-	void insertArc(vertex v, vertex w, int edgeW, int redN, int src=1);
-	bool insertArcSrc(vertex v, vertex w, int edgeW, int redN, int *cost, int srcOrigDepth, int srcLayer, int srcLayerInitialPos, int srcLayerWidth, int srcLayerHeight, int src);
+	void insertArc(vertex v, vertex w, int edgeW, /*int redN,*/ int src=1);
+	void insertArcSum(vertex v, vertex w, int edgeW, int src);
+	bool insertArcSrc(vertex v, vertex w, int edgeW, /*int redN,*/ int src);
+	bool insertArcSrcMlvl(vertex v, vertex w, int edgeW, /*int redN,*/ int src);
+	bool insertArcSrcMlvlPartitionGraph(vertex v, vertex w, int edgeW, /*int redN,*/ int src, int srcMlvl);
 	/* Updates vertex weights */
 	void setVertexWeight(vertex v, int vertexW);
 	int getVertexWeight(int v) const {
@@ -57,15 +60,32 @@ public:
 	int getNumberOfVertices() const {
 		return V;
 	}
+	int getNumberOfEdges() const {
+		return A;
+	}
 	links getAdjOfVertex(int i) const {
 		return adj[i];
 	}
+
 	void setFlags(int vertexLabel, int edgeWeight, int vertexWeight, int memory);
-	void printGraph() const;
-	void printGraphSrc() const;
+	int getEnableVertexLabels() const {
+		return enableVertexLabels;
+	}
+	int getEnableEdgeWeights() const {
+		return enableEdgeWeights;
+	}
 	int getEnableMemory() const {
 		return enableMemory;
 	}
+	int getEnableVertexWeights() const {
+		return enableVertexWeights;
+	}
+
+	void printGraph() const;
+	void printGraphSrc() const;
+	void printGraphMlvl() const;
+	void printGraphHeader() const;
+
 	int getMemory(vertex v) const {
 		return memory[v];
 	}
@@ -97,9 +117,44 @@ public:
 		return [i]->redundantNeurons;
 	}*/
 	void setSharedParam(int i, int numP);
-	int getSharedParam(int i) const {
-		return sharedParam[i];
+	int getSharedParam(int layer) const {
+		return sharedParam[layer];
 	}
+
+	int getSharedParams(int u) const;
+
+	int getMatch(int i) const {
+		return match[i];
+	}
+	void setMatch(int u, int v);
+
+	void setEdgeMatch(links node);
+
+	void setMap(int u, int v, int label);
+	int getMap(int u) const {
+		return map[u];
+	}
+
+	void setVertexDegree(int v, int deg);
+	int getVertexDegree(int v) const {
+		return degree[v];
+	}
+
+	int getLayerOfVertex(int v) const;
+
+	void setNodeSharedParam(int v, int layer);
+
+	int getNodeSharedParam(int v, int layer) {
+		return sharedParamPerVertex[v][layer];
+	}
+
+	void setNodeSharedParamArray(int v, bool *shrdppv);
+
+	void getSharedParamArray(int v, bool *shrdppv) const;
+
+	void getSharedParamPerLayer(int *shrdppl) const;
+
+	void setSharedParamPerLayer(int *shrdppl) const;
 
 	//int getAdjMatrixEdgeWeight(int i, int j);
 
@@ -108,6 +163,8 @@ public:
 private:
 	int V;
 	int A; 
+	// type = false (SourceGraph), true (partitionGraph)
+	bool type;
 
 	int enableVertexLabels;
 	int enableEdgeWeights;
@@ -123,7 +180,12 @@ private:
 
 	int *vertexWeight;
 	int *memory;
-	//node_matrix **adjMatrix;
+	int *match;
+	int *map;
+	int *degree;
+	bool **sharedParamPerVertex;
+	int *adjMatrixSize;
+	node_matrix **adjMatrix;
 	links *adj;
 };
 
@@ -135,7 +197,9 @@ struct node {
 	vertex w; 
 	int edgeWeight;
 	int source;
-	int redundantNeurons;
+	int sourceMlvl;
+	//int redundantNeurons;
+	int matched;
 	links next; 
 };
 #endif
@@ -145,6 +209,8 @@ struct node {
 struct node_matrix{
 	int edgeWeight;
 	int source;
+	int sourceMlvl;
+	int matched;
 };
 #endif
 

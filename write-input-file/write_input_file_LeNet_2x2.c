@@ -215,9 +215,6 @@ int main(int argc, char *argv[]) {
 		initialPos[i] += initialPos[i - 1] + (wi[i - 1] / wiScale[i - 1]) * (hi[i - 1] / hiScale[i - 1]) * (di[i - 1] / diScale[i - 1]); 
 	}
 
-	// input vertices + vertices with 1st layer conv result
-	//num_vertices = WI * HI * DI + ((WI - WF) + 1) * ((HI - HF) + 1) * DF;
-
 	// input vertices + vertices with 1st layer conv result + vertices with 2nd layer subsampling result
 	num_vertices = /*input*/ WI * HI * DI + /*C1*/ ((WI - WF) + 1) * ((HI - HF) + 1) * DF + /*S2*/ ((WI - WF) + 1)/2 * ((HI - HF) + 1)/2 * DF + /*C3*/ ((((WI - WF) + 1)/2 - WF) + 1) * ((((HI - HF) + 1)/2 - HF) + 1) * DF + /*S4*/ ((((WI - WF) + 1)/2 - WF) + 1) * ((((HI - HF) + 1)/2 - HF) + 1) * DF + /*C5*/ 30 + /*FC6*/ 21 + /*Output*/ 2;
 

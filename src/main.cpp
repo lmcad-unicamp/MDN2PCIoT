@@ -26,12 +26,11 @@
 #include "ReadInputFiles.h"
 #include "InferenceRate.h"
 #include "Comm.h"
+#include "CoarsenGraph.h"
 
 using namespace std;
 
 int main(int argc, char *argv[]) {
-	//char fileName[50] = "source-graphs/LeNet-0765@vertices.grf";
-	//char targetName[27] = "target-graphs/machines.tgt";
 
 	bool singleMove = true;
 	bool swaps = true;
@@ -60,7 +59,9 @@ int main(int argc, char *argv[]) {
 
 	SourceGraph g(*r.getSourceGraph());
 	if ((strcmp(argv[6], "verb")) == 0) {
-		//g.printGraph();
+		g.printGraph();
+	} else {
+		g.printGraphHeader();
 	}
 
 	// Adjacency matrix
@@ -72,72 +73,155 @@ int main(int argc, char *argv[]) {
 
 	TargetGraph t(*r.getTargetGraph());
 
-	// ----------------------//
-	// ----------------------//
-	// ----- Comm -----//
-	if ((strcmp(argv[5], "DN2PCIoTcomm")) == 0) {
-		Comm Comm2(&g, r.getTargetNumberOfVertices(), singleMove, swaps, &t, g.getNumberOfVertices(), forcedInput, initPart, argv[6], argv[4], numberOfThreads);
+	// multilevel graph coarsening
+	bool verb = false;
+	if ((strcmp(argv[6], "verb")) == 0) {
+		verb = true;
+	}
 
-		if ((strcmp(argv[6], "verb")) == 0) {
-			t.printGraph();
-		}
-		cout << "\nsourceGraphFile: " << argv[1] << "\ntargetGraphFile: " << argv[2];
-		cout << "\nSingleMoves: " << singleMove << ", swaps: " << swaps << ", locked input: " << forcedInput << ", initPart: " << initPart << ", DN2PCIoTcomm, number of threads: " << numberOfThreads;
-		cout << "\ninitPartFileName: " << argv[4];
+	int partitioning[g.getNumberOfVertices()];
 
-		cout << "\n\nInitial partitioning:";
-		Comm2.printPartitioning(Comm2.getInitialPartitioning());
-		cout << "initialCost: " << Comm2.computeCost(Comm2.getInitialPartitioning(), false) << "\n";
-		int memoryValid = Comm2.validPartitioning(Comm2.getInitialPartitioning());
-		for (int i = 0; i < Comm2.getNumberOfPartitions(); i++) {
-			cout << "mem[" << i << "]: " << Comm2.getValidArray(i) << " ";
-		}
-		cout << "\nmemoryValid: " << memoryValid << "\n\n" << endl;
+	Comm initialP(&g, r.getTargetNumberOfVertices(), singleMove, swaps, &t, g.getNumberOfVertices(), forcedInput, initPart, argv[6], argv[4], numberOfThreads, false, partitioning, g.getNumberOfVertices(), false, partitioning);
+
+	//initialP.printPartitioning(initialP.getInitialPartitioning());
 	
-		Comm2.run(argv[3]);
+	CoarsenGraph coarsenGraph(&g, &t, verb, initialP.getInitialPartitioning(), strtol(argv[10], NULL, 10));
 
-		cout << "\nBest partitioning found:";
-		Comm2.printPartitioning(Comm2.getBestPartitioning());
-		cout << "bestCost: " << Comm2.computeCost(Comm2.getBestPartitioning(), false) << "\n";
-		memoryValid = Comm2.validPartitioning(Comm2.getBestPartitioning());
-		for (int i = 0; i < Comm2.getNumberOfPartitions(); i++) {
-			cout << "mem[" << i << "]: " << Comm2.getValidArray(i) << " ";
+	if ((strcmp(argv[6], "verb")) == 0) {
+		t.printGraphHeader();
+		//t.printGraph();
+	}
+
+	cout << "\nsourceGraphFile: " << argv[1] << "\ntargetGraphFile: " << argv[2];
+	cout << "\nSingleMoves: " << singleMove << ", swaps: " << swaps << ", locked input: " << forcedInput << ", initPart: " << initPart << ", number of threads: " << numberOfThreads;
+	cout << "\ninitPartFileName: " << argv[4];
+
+	int same, samee;
+	if (coarsenGraph.getCoarsenedGraph(0)->getNumberOfVertices() < 700) {
+		same = 300;
+		samee = strtol(argv[10], NULL, 10);
+	} else if (coarsenGraph.getCoarsenedGraph(0)->getNumberOfVertices() < 2500) {
+		same = 150;
+		samee = strtol(argv[10], NULL, 10);
+	} else {
+		same = strtol(argv[9], NULL, 10); // Before: 50;
+		samee = strtol(argv[10], NULL, 10);
+	}
+
+	cout << "\nSame: " << same << ", Samee: " << samee;
+
+	for (int c = coarsenGraph.getNumberOfCoarsenedGraphs() - 1; c >= 0; c--) {
+
+		int nVertices = g.getNumberOfVertices();
+		// random initial partitioning
+		bool multilevel = false;
+		// turn off pmatch: defPart = false
+		bool defPart = false;
+		if (c < coarsenGraph.getNumberOfCoarsenedGraphs() - 1) {
+			nVertices = coarsenGraph.getCoarsenedGraph(c + 1)->getNumberOfVertices();
+			multilevel = true;
+			defPart = false;
 		}
-		cout << "\nmemoryValid: " << memoryValid << "\n\n";
 
-	// ----------------------------//
-	// ----------------------------//
-	// ----- InferenceRate -----//
-	} else if ((strcmp(argv[5], "DN2PCIoTiR")) == 0) {
-		InferenceRate InferenceRate(&g, r.getTargetNumberOfVertices(), singleMove, swaps, &t, g.getNumberOfVertices(), forcedInput, initPart, argv[6], argv[4], numberOfThreads);
+		// Skip larger graphs
+		/*if (g.getNumberOfVertices() < 1200) {
+			if (r.getTargetNumberOfVertices() > 50 && coarsenGraph.getCoarsenedGraph(c)->getNumberOfVertices() > 400)// || coarsenGraph.getCoarsenedGraph(c)->getNumberOfVertices() > 1600)
+				continue;
+		} else if (g.getNumberOfVertices() < 2500) {
+			if (r.getTargetNumberOfVertices() > 50 && coarsenGraph.getCoarsenedGraph(c)->getNumberOfVertices() > 800)
+				continue;
+		}*/ /*else {
+			if (coarsenGraph.getCoarsenedGraph(c)->getNumberOfVertices() > 4800)
+				//continue;
+		}*/
 
-		if ((strcmp(argv[6], "verb")) == 0) {
-			t.printGraph();
-		}
-		cout << "\nsourceGraphFile: " << argv[1] << "\ntargetGraphFile: " << argv[2];
-		cout << "\nSingleMoves: " << singleMove << ", swaps: " << swaps << ", locked input: " << forcedInput << ", initPart: " << initPart << ", DN2PCIoTiR, number of threads: " << numberOfThreads;
-		cout << "\ninitPartFileName: " << argv[4];
+		// ----------------------//
+		// ----------------------//
+		// ----- Comm -----//
+		if ((strcmp(argv[5], "MDN2PCIoTcomm")) == 0) {
+			Comm Comm(coarsenGraph.getCoarsenedGraph(c), r.getTargetNumberOfVertices(), singleMove, swaps, &t, coarsenGraph.getCoarsenedGraph(c)->getNumberOfVertices(), forcedInput, initPart, argv[6], argv[4], numberOfThreads, multilevel, partitioning, nVertices, defPart, coarsenGraph.getDefinedPartitioning());
 
-		cout << "\n\nInitial partitioning:";
+			//cout << "\n nVertices: " << nVertices;
 
-		InferenceRate.printPartitioning(InferenceRate.getInitialPartitioning());
-		cout << "initialCost: " << -InferenceRate.computeCost(InferenceRate.getInitialPartitioning(), false) << "\n";
-		int memoryValid = InferenceRate.validPartitioning(InferenceRate.getInitialPartitioning());
-		for (int i = 0; i < InferenceRate.getNumberOfPartitions(); i++) {
-			cout << "mem[" << i << "]: " << InferenceRate.getValidArray(i) << " ";
-		}
-		cout << "\nmemoryValid: " << memoryValid << "\n\n" << endl;
+			cout << "\nMDN2PCIoTcomm c: " << c << " numberOfVertices: " << coarsenGraph.getCoarsenedGraph(c)->getNumberOfVertices() << " numberOfEdges: " << coarsenGraph.getCoarsenedGraph(c)->getNumberOfEdges();
+			//cout << "\ninitPart: " << ;
+
+			cout << "\n\nInitial partitioning: \n";
+			Comm.printPartitioning(Comm.getInitialPartitioning());
+			//cout << "initialCost (nonredundantEdges: " << Comm.computeCost(fullGraph.getInitialPartitioning(), false, true) << "\n";
+			cout << "initialCost: " << Comm.computeCost(Comm.getInitialPartitioning(), false, true) << "\n";
+			if (c == 0)
+				cout << "initialCost (Nonredundant edges): " << Comm.computeCost(Comm.getInitialPartitioning(), false, true) << "\n";
+			int memoryValid = Comm.validPartitioning(Comm.getInitialPartitioning());
+			for (int i = 0; i < Comm.getNumberOfPartitions(); i++) {
+				cout << "mem[" << i << "]: " << Comm.getValidArrayPerThread(0, i) << " ";
+			}
+			cout << "\nmemoryValid: " << memoryValid << "\n\n" << endl;
+
+			// !KLP1
+			if ((r.getTargetNumberOfVertices() < 50 && coarsenGraph.getCoarsenedGraph(c)->getNumberOfVertices() < 700) || 
+			 r.getTargetNumberOfVertices() < 12 ) //&& coarsenGraph.getCoarsenedGraph(c)->getNumberOfVertices() < 2500)
+				multilevel = false;
+
+			Comm.run(argv[3], multilevel, same, samee);
+
+			cout << "\nBest partitioning found:";
+			Comm.printPartitioning(Comm.getBestPartitioning());
+			cout << "bestCost: " << Comm.computeCost(Comm.getBestPartitioning(), false, true) << "\n";
+			if (c == 0)
+				cout << "bestCost (Nonredundant edges): " << Comm.computeCost(Comm.getBestPartitioning(), false, true) << "\n";
+			memoryValid = Comm.validPartitioning(Comm.getBestPartitioning());
+			for (int i = 0; i < Comm.getNumberOfPartitions(); i++) {
+				cout << "mem[" << i << "]: " << Comm.getValidArrayPerThread(0, i) << " ";
+			}
+			cout << "\nmemoryValid: " << memoryValid << "\n\n";
+
+			// for next iteration of multilevel partitioning
+			for (int i = 0; i < coarsenGraph.getCoarsenedGraph(c)->getNumberOfVertices(); i++)
+				partitioning[i] = Comm.getVertexOfBestPartitioning(i);
+
+		// ----------------------------//
+		// ----------------------------//
+		// ----- InferenceRate -----//
+		} else if ((strcmp(argv[5], "MDN2PCIoTiR")) == 0) {
+			InferenceRate InferenceRate(coarsenGraph.getCoarsenedGraph(c), r.getTargetNumberOfVertices(), singleMove, swaps, &t, coarsenGraph.getCoarsenedGraph(c)->getNumberOfVertices(), forcedInput, initPart, argv[6], argv[4], numberOfThreads, multilevel, partitioning, nVertices);
+
+			cout << "\nMDN2PCIoTiR c: " << c << " numberOfVertices: " << coarsenGraph.getCoarsenedGraph(c)->getNumberOfVertices() << " numberOfEdges: " << coarsenGraph.getCoarsenedGraph(c)->getNumberOfEdges();
+
+			cout << "\n\nInitial partitioning:";
+
+			InferenceRate.printPartitioning(InferenceRate.getInitialPartitioning());
+			cout << "initialCost: " << -InferenceRate.computeCost(InferenceRate.getInitialPartitioning(), false, true) << "\n";
+			if (c == 0)
+				cout << "initialCost (Nonredundant edges): " << InferenceRate.computeCost(InferenceRate.getInitialPartitioning(), false, true) << "\n";
+			int memoryValid = InferenceRate.validPartitioning(InferenceRate.getInitialPartitioning());
+			for (int i = 0; i < InferenceRate.getNumberOfPartitions(); i++) {
+				cout << "mem[" << i << "]: " << InferenceRate.getValidArray(i) << " ";
+			}
+			cout << "\nmemoryValid: " << memoryValid << "\n\n" << endl;
 	
-		InferenceRate.run(argv[3]);
+			// !KLP1
+			if ((r.getTargetNumberOfVertices() < 50 && coarsenGraph.getCoarsenedGraph(c)->getNumberOfVertices() < 700) || 
+			 r.getTargetNumberOfVertices() < 12)
+				multilevel = false;
 
-		cout << "\nBest partitioning found:";
-		InferenceRate.printPartitioning(InferenceRate.getBestPartitioning());
-		cout << "bestCost: " << -InferenceRate.computeCost(InferenceRate.getBestPartitioning(), false) << "\n";
-		memoryValid = InferenceRate.validPartitioning(InferenceRate.getBestPartitioning());
-		for (int i = 0; i < InferenceRate.getNumberOfPartitions(); i++) {
-			cout << "mem[" << i << "]: " << InferenceRate.getValidArray(i) << " ";
+			InferenceRate.run(argv[3], multilevel, same, samee);
+
+			cout << "\nBest partitioning found:";
+			InferenceRate.printPartitioning(InferenceRate.getBestPartitioning());
+			cout << "bestCost: " << -InferenceRate.computeCost(InferenceRate.getBestPartitioning(), false, true) << "\n";
+			if (c == 0)
+				cout << "bestCost (Nonredundant edges): " << InferenceRate.computeCost(InferenceRate.getBestPartitioning(), false, true) << "\n";
+			memoryValid = InferenceRate.validPartitioning(InferenceRate.getBestPartitioning());
+			for (int i = 0; i < InferenceRate.getNumberOfPartitions(); i++) {
+				cout << "mem[" << i << "]: " << InferenceRate.getValidArray(i) << " ";
+			}
+			cout << "\nmemoryValid: " << memoryValid << "\n\n";
+
+			// for next iteration of multilevel partitioning
+			for (int i = 0; i < coarsenGraph.getCoarsenedGraph(c)->getNumberOfVertices(); i++)
+				partitioning[i] = InferenceRate.getVertexOfBestPartitioning(i);
 		}
-		cout << "\nmemoryValid: " << memoryValid << "\n\n";
 	}
 
 	return 0;

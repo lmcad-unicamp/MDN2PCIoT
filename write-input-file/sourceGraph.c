@@ -153,12 +153,12 @@ void PrintGraph(Graph G) {
 	}
 }
 
-// The parameter is a pointer to a pointer to the struct graph
+// The parameter is a pointer to a pointer to the struct graph 
 void FreeGraph(Graph *G) {
 	link no=NULL, aux=NULL;
 	int i;
 
-	if (*G != NULL) { // *G represents the content to the double pointer, that is, the address pointed by G (which is a pointer to graph)
+	if (*G != NULL) {
 		if ((*G)->vertex_weights != NULL){
 			free((*G)->vertex_weights);
 			(*G)->vertex_weights = NULL;
@@ -186,6 +186,6 @@ void FreeGraph(Graph *G) {
 			(*G)->adj = NULL;
 		}
 		free(*G);
-		*G = NULL; 
+		*G = NULL; // atribui NULL para a variável do escopo principal
 	}
 }

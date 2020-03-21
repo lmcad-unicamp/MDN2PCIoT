@@ -77,19 +77,30 @@ public:
 	void setInitialPartitioning();
 	void printPartitioning(const int *partitioning) const;
 
-	bool run(char *instance);
+	bool run(char *instance, bool multilevel, int samee, int sameee);
 
 	/* Returns the cost of partition the graph with partitioning p. */
-	virtual double computeCost(const int *partitioning, bool openmp) = 0;
+	virtual double computeCost(const int *partitioning, bool openmp, bool nonredundantEdges) = 0;
+	//virtual double computeDiffCost(int *partitioning, unsigned node, unsigned k, unsigned originalNodePartition, unsigned original_k_Partition, bool openmp, bool nonredundantEdges, bool exchange) = 0;
+	// updates currentCost
+	//virtual void reCost(int *partitioning) = 0;
 
 	/* Returns true if the partitioning is valid, false otherwise. */
 	virtual bool validPartitioning(const int *partitioning) = 0;
 	virtual bool diffValidPartitioning(int *partitioning, unsigned node, unsigned k, unsigned originalNodePartition, unsigned original_k_Partition, bool singleOrSwap) = 0;
 
-	const int *getInitialPartitioning() const; 
-	const int *getBestPartitioning() const;
+	const int *getInitialPartitioning() const;
+	const int *getBestPartitioning() const; 
 	int getCurrentPartitioning(int node) const;
 
+	int getVertexOfBestPartitioning(int u) const;
+
+	bool getConsiderExchangingNodes() const {
+		return considerExchangingNodes;
+	}
+	bool getConsiderMovingNodes() const {
+		return considerMovingNodes;
+	}
 	int getNumberOfVertices() const {
 		return numberOfVertices;
 	}
@@ -113,12 +124,18 @@ public:
 		return threadsForPartitions;
 	}
 
+	void setLockedArraySize(int lsize);
+	void setLockedArray(int position, int node);
+	int getLockedArray(int position) const {
+		return lockedArray[position];
+	}
+
 	~GenericPartitioningAlgorithm();
 
 private:
 	bool findBestSingleNodeMove(NodeIndex_t node, Move_t &m, double &bestC);
-	bool findBestNodeExchange(NodeIndex_t node, Move_t &m, double &bestC);
-	bool findBestMove(Move_t &m, double &cost, int &thread);
+	bool findBestNodeExchange(NodeIndex_t node, Move_t &m, double &bestC, int samee);
+	bool findBestMove(Move_t &m, double &cost, int &thread, int samee, int sameee);
 	
 	// If a member function is defined in the body of a class definition, the member function is implicitly declared inline.
 	void performMove(int *partitioning, Move_t &m) {
@@ -131,7 +148,7 @@ private:
 			releasedVertices[m.a] = false;
 			releasedNodes.erase(m.a);
 		}
-		if (m.move_b)	{
+		if (m.move_b) {
 			releasedVertices[m.b] = false;
 			releasedNodes.erase(m.b);
 		}
@@ -148,10 +165,18 @@ private:
 	    /* Add all node indices to released_nodes. */
 		for (NodeIndex_t i = 0; i < getNumberOfVertices(); i++) 
     			releasedNodes.insert(i);
-	}   
+	} 
+
+	void lockInnerNode(int v) {
+		releasedVertices[v] = false;
+		releasedNodes.erase(v);
+	}  
 
 	void copyCurrentPartForThreads();
 	void copyBackCurrentPartForThreads(int thread);
+
+	// Multilevel refinement
+	void lockInnerNodes();
 
 	// data members:
 	int *initialPartitioning;
@@ -170,6 +195,7 @@ private:
 
 	double bestCost;
 
+	//graph_t* sourceGraph;
 	const int numberOfVertices;	// const
 
 	// to force input to be in the same partition
@@ -178,6 +204,10 @@ private:
 	// OpenMP
 	int numberOfThreads;
 	int threadsForPartitions;
+
+	// Multilevel refinement
+	int *lockedArray;
+	int lockedArraySize;
 };
 
 #endif // GPA

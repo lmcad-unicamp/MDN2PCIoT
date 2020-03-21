@@ -29,10 +29,10 @@
 class InferenceRate : public GenericPartitioningAlgorithm {
 
 public:
-	InferenceRate(SourceGraph *srcG, int nPartitions, bool movingNodes, bool exchangingNodes, TargetGraph *tgtG, int nVertices, int forcedInput, bool initPart, char *verbose, char *initPartFile, int numberOfThreads);
+	InferenceRate(SourceGraph *srcG, int nPartitions, bool movingNodes, bool exchangingNodes, TargetGraph *tgtG, int nVertices, int forcedInput, bool initPart, char *verbose, char *initPartFile, int numberOfThreads, bool multilevel, int *multilevelPart, int higherLevelNumberOfVertices);
 
 	/* Returns the cost of partition the graph with partitioning p. */
-	virtual double computeCost(const int *partitioning, bool openmp);
+	virtual double computeCost(const int *partitioning, bool openmp, bool nonredundantEdges);
 
 	/* Returns true if the partitioning is valid, false otherwise. */
 	virtual bool validPartitioning(const int *partitioning);
@@ -57,7 +57,7 @@ private:
 	void merge(int **A, int p, int q, int r);
 
 	void setSourceGraph(SourceGraph *srcG);
-	void setInitialPartitionings(int forcedInput, bool initPart, char *initPartFile);
+	void setInitialPartitionings(int forcedInput, bool initPart, char *initPartFile, bool multilevel, int *multilevelPart, int higherLevelNumberOfVertices);
 	void seed_rng(void);
 
 	const SourceGraph *sourceG;	// could be const
@@ -71,6 +71,7 @@ private:
 	int *targetIndexes;
 
 	// diffValidPartitioning
+	//int *sourceMem;
 	int *sortedTargetMem;
 
 	// eliminates redundant memory by accounting for shared memory only once per partition

@@ -29,10 +29,10 @@
 class Comm : public GenericPartitioningAlgorithm {
 
 public:
-	Comm(SourceGraph *srcG, int nPartitions, bool movingNodes, bool exchangingNodes, TargetGraph *tgtG, int nVertices, int forcedInput, bool initPart, char *verbose, char *initPartFile, int numberOfThreads);
+	Comm(SourceGraph *srcG, int nPartitions, bool movingNodes, bool exchangingNodes, TargetGraph *tgtG, int nVertices, int forcedInput, bool initPart, char *verbose, char *initPartFile, int numberOfThreads, bool multilevel, int *multilevelPart, int higherLevelNumberOfVertices, int defPart, int *p);
 
 	/* Returns the cost of partition the graph with partitioning p. */
-	virtual double computeCost(const int *partitioning, bool openmp);
+	virtual double computeCost(const int *partitioning, bool openmp, bool nonredundantEdges);
 
 	/* Returns true if the partitioning is valid, false otherwise. */
 	virtual bool validPartitioning(const int *partitioning);
@@ -41,7 +41,9 @@ public:
 	int getValidArray(int i) const;
 	int getValidIndex(int i) const;
 
-	int buildNetworkTopology(int n, int k, int i, int j); // joao
+	int getValidArrayPerThread(int t, int i) const;
+
+	int buildNetworkTopology(int n, int k, int i, int j); // joao - SBAC 2019
 
 	~Comm();
 
@@ -59,11 +61,20 @@ private:
 	void merge(int **A, int p, int q, int r);
 
 	void setSourceGraph(SourceGraph *srcG);
-	void setInitialPartitionings(int forcedInput, bool initPart, char *initPartFile);
+	void setInitialPartitionings(int forcedInput, bool initPart, char *initPartFile, bool multilevel, int *multilevelPart, int higherLevelNumberOfVertices, int defPart, int *p);
 	void seed_rng(void);
 
-	const SourceGraph *sourceG;	// could be const
+	SourceGraph* getPartitionGraphPerThread(int thread) {
+		return partitionGraphPerThread[thread];
+	}
+	SourceGraph* getPartitionGraph() {
+		return partitionGraph;
+	}
+
+	SourceGraph *sourceG;	// could be const (not anymore in multilevel implementation because of match and map)
 	const TargetGraph *target;	// const
+
+	//void broadcastValidArray();
 
 	// validArray contains memory needed for each partition
 	int *validArray;
@@ -72,12 +83,24 @@ private:
 	int *targetIndexes;
 
 	int **validIndexesPerThread; // OpenMP
+	// diffValidPartitioning
+	//int *sourceMem;
 	int *sortedTargetMem;
+
+	int **validArrayPerThread; // OpenMP
 
 	// eliminates redundant memory by accounting for shared memory only once per partition
 	bool **sharedMemoryPerPartition;
 
-	// eliminates redundant edges (edges that come from the same vertex and go to the same partition)
+	bool ***sharedMemoryPerPartitionPerThread; // OpenMP
+
+	// in order to just update cost, thus calculating it faster	
+	double Cost;
+	bool *nodeLayer;
+	bool *nodeLayerMinus1;
+	bool *iLayer;
+
+	// elimnates redundant edges (edges that come from the same vertex and go to the same partition)
 	SourceGraph *partitionGraph;
 
 	SourceGraph **partitionGraphPerThread; // OpenMP

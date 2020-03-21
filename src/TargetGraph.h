@@ -26,12 +26,8 @@
 /* Graph vertices are represented by objects of type vertex. */
 #define vertex int
 
-/* The adjacency list of a vertex v is composed by nodes of type node. Each node of the list corresponds to an arc and contains a neighbour w of v and the address of the next node in the list. A link is a pointer to a node. */
+/* The adjacency list of a vertex v is composed by nodes of type node. Each node of the list corresponds to an arc and contains a neighbour w of v and the address of the next targetNode in the list. A targetLink is a pointer to a node. */
 typedef struct targetNode *targetLink;
-
-	/* ADJACENCY LIST REPRESENTATION: the function GRAPHinsertArc() inserts an arc v-w in graph G. The function supposes that v and w are distinct, positive, and smaller than G->V. If the graph already has an arc v-w, the function does not do anything. */
-/*#ifndef TARGET_GRAPH
-#define TARGET_GRAPH*/
 
 class TargetGraph {
 
@@ -42,6 +38,7 @@ public:
 	// copy constructor
 	TargetGraph(const TargetGraph &graphToCopy);
 
+	/* ADJACENCY LIST REPRESENTATION: the function GRAPHinsertArc() inserts an arc v-w in graph G. The function supposes that v and w are distinct, positive, and smaller than G->V. If the graph already has an arc v-w, the function does not do anything. */
 	void insertArc(vertex v, vertex w);
 
 	/* Updates vertex weights */
@@ -62,6 +59,8 @@ public:
 
 	int getMemory(int machine) const;
 
+	int getMinMemory() const;
+
 	int getComputationalWeight(int machine) const;
 
 	int getAssigned(int machine) const;
@@ -71,6 +70,7 @@ public:
 	int getNumberOfVertices() const;
 
 	void printGraph() const;
+	void printGraphHeader() const;
 
 	~TargetGraph();
 
