@@ -11,7 +11,13 @@ ________________________________________________________________
 MDN2PCIoT
 
 Multilevel Deep Neural Networks Partitioning for Constrained IoT Devices
+___________________________________________________________________________
+Instructions:
 
-Attention!
+1) Extract the AlexNet source file in the source-graphs folder before using it. 
 
-Please, extract the AlexNet source file in the source-graphs folder. 
+2) Execute the command "make clean; make" in the to clean and compile each partitioning algorithm (in each commit). 
+
+3) The "execute.sh" script contains an execution example. Edit this file to contain the desired parameters and algorithm.
+
+4) Execute "execute.sh" using "bash execute.sh"
