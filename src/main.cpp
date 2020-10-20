@@ -85,7 +85,7 @@ int main(int argc, char *argv[]) {
 
 	//initialP.printPartitioning(initialP.getInitialPartitioning());
 	
-	CoarsenGraph coarsenGraph(&g, &t, verb, initialP.getInitialPartitioning(), strtol(argv[10], NULL, 10));
+	CoarsenGraph coarsenGraph(&g, &t, verb, initialP.getInitialPartitioning(), strtol(argv[11], NULL, 10));
 
 	if ((strcmp(argv[6], "verb")) == 0) {
 		t.printGraphHeader();
