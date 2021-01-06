@@ -88,6 +88,7 @@ public:
 	/* Returns true if the partitioning is valid, false otherwise. */
 	virtual bool validPartitioning(const int *partitioning) = 0;
 	virtual bool diffValidPartitioning(int *partitioning, unsigned node, unsigned k, unsigned originalNodePartition, unsigned original_k_Partition, bool singleOrSwap) = 0;
+	virtual int getValidArray(int i) const = 0;
 
 	const int *getInitialPartitioning() const;
 	const int *getBestPartitioning() const; 
@@ -208,6 +209,9 @@ private:
 	// Multilevel refinement
 	int *lockedArray;
 	int lockedArraySize;
+
+	// 0: comm; 1: iR
+	bool objFunction;
 };
 
 #endif // GPA

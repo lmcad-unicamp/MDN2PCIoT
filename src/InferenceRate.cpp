@@ -47,6 +47,24 @@ InferenceRate::InferenceRate(SourceGraph *srcG, int nPartitions, bool movingNode
 		exit(EXIT_FAILURE);	
 	}
 
+	validArrayPerThread = (int **) malloc(getNumberOfThreads() * sizeof(int *));
+	if (validArrayPerThread == NULL) {
+		cout << "\n validArrayPerThread could not be allocated! \n";
+		exit(EXIT_FAILURE);	
+	}
+	for (int i = 0; i < getNumberOfThreads(); i++) {
+		validArrayPerThread[i] = (int *) malloc(nPartitions * sizeof(int));
+		if (validArrayPerThread[i] == NULL) {
+			cout << "\n validArrayPerThread[i] could not be allocated! \n";
+			exit(EXIT_FAILURE);	
+		}		
+	}
+	for (int i = 0; i < getNumberOfThreads(); i++) {
+		for (int j = 0; j < nPartitions; j++) {
+			validArrayPerThread[i][j] = 0;
+		}
+	}
+
 	validIndexes = (int *) calloc(nPartitions, sizeof(int));
 	if(validIndexes == NULL) {
 		cout << "\n validIndexes could not be allocated! \n";
@@ -97,6 +115,35 @@ InferenceRate::InferenceRate(SourceGraph *srcG, int nPartitions, bool movingNode
 	for (int i = 0; i < getNumberOfPartitions(); i++) {
 		for (int j = 0; j < sourceG->getNumberOfLayers(); j++) {
 			sharedMemoryPerPartition[i][j] = false;
+		}
+	}
+
+	sharedMemoryPerPartitionPerThread = (bool ***) malloc(getNumberOfThreads() * sizeof(bool **));
+	if (sharedMemoryPerPartitionPerThread == NULL) {
+		cout << "\n sharedMemoryPerPartitionPerThread could not be allocated! \n";
+		exit(EXIT_FAILURE);	
+	}
+	for (int i = 0; i < getNumberOfThreads(); i++) {
+		sharedMemoryPerPartitionPerThread[i] = (bool **) malloc(nPartitions * sizeof(bool *));
+		if (sharedMemoryPerPartitionPerThread[i] == NULL) {
+			cout << "\n sharedMemoryPerPartitionPerThread[i] could not be allocated! \n";
+			exit(EXIT_FAILURE);	
+		}		
+	}
+	for (int i = 0; i < getNumberOfThreads(); i++) {
+		for (int j = 0; j < nPartitions; j++) {
+			sharedMemoryPerPartitionPerThread[i][j] = (bool *) malloc(sourceG->getNumberOfLayers() * sizeof(bool));
+			if (sharedMemoryPerPartitionPerThread[i][j] == NULL) {
+						cout << "\n sharedMemoryPerPartitionPerThread[i][j] could not be allocated! \n";
+						exit(EXIT_FAILURE);	
+			}		
+		}
+	}
+	for (int t = 0; t < getNumberOfThreads(); t++) {
+		for (int i = 0; i < getNumberOfPartitions(); i++) {
+			for (int j = 0; j < sourceG->getNumberOfLayers(); j++) {
+				sharedMemoryPerPartitionPerThread[t][i][j] = false;
+			}
 		}
 	}
 
@@ -843,7 +890,7 @@ double InferenceRate::computeCost(const int *partitioning, bool openmp, bool non
 		}
 	}
 
-	return -finalInferenceRate;
+	return finalInferenceRate;
 }
 
 void InferenceRate::computeRedundantMemoryPerPartition(const int *p) {
@@ -859,22 +906,16 @@ void InferenceRate::computeRedundantMemoryPerPartition(const int *p) {
 void InferenceRate::computeNonredundantMemoryPerPartition(const int *p) {
 	int i, j;
 
-#	pragma omp parallel num_threads(getNumberOfThreads())
-	{
-#	pragma omp for
 	for (i = 0; i < getNumberOfPartitions(); i++) {
-		validArray[i] = 0;
-		for (j = 0; j < sourceG->getNumberOfLayers(); j++) {
-			sharedMemoryPerPartition[i][j] = false;
+		validArrayPerThread[omp_get_thread_num()][i] = 0;
+		for (int j = 0; j < sourceG->getNumberOfLayers(); j++) {
+			sharedMemoryPerPartitionPerThread[omp_get_thread_num()][i][j] = false;
 		}
 	}
 
 	// Calculate amount of memory needed for each partition
-	j = 0; // layer
-#	pragma omp for private(j)
 	for (i = 0; i < sourceG->getNumberOfVertices(); i++) {
-#		pragma omp critical
-		validArray[p[i]] += sourceG->getMemory(i);
+		validArrayPerThread[omp_get_thread_num()][p[i]] += sourceG->getMemory(i);
 		// Sequential code (initially j = 0 above and sharedMemPerPart[p[i]][j - 1] below
 		/*if (i >= sourceG->getLayerInitialPos(j)) {
 			j++;
@@ -883,28 +924,24 @@ void InferenceRate::computeNonredundantMemoryPerPartition(const int *p) {
 			}
 		}*/
 
-		j = 0;
-		while (j < sourceG->getNumberOfLayers() - 1) {
-			if (i < sourceG->getLayerInitialPos(j + 1)) {
-				break;
-			} else {
-				j++;
+		// finds the layers i belongs
+		bool shrdppv[sourceG->getNumberOfLayers()];
+		sourceG->getSharedParamArray(i, shrdppv);		
+		
+		for (int j = 0; j < sourceG->getNumberOfLayers(); j++) {
+			if (shrdppv[j] == true) {
+				sharedMemoryPerPartitionPerThread[omp_get_thread_num()][p[i]][j] = true;
 			}
 		}
-
-#		pragma omp critical
-		sharedMemoryPerPartition[p[i]][j] = true;
 	}
-#	pragma omp for private(j)
 	for (i = 0; i < getNumberOfPartitions(); i++) {
-		//cout << "\nThread[" << omp_get_thread_num() << "]";
-		for (j = 0; j < sourceG->getNumberOfLayers(); j++) {
-			if (sharedMemoryPerPartition[i][j] == true) {
-				validArray[i] += sourceG->getSharedParam(j);
+		//cout << "\nThread[" << omp_get_thread_num() << "]: i: " << i ;
+		for (int j = 0; j < sourceG->getNumberOfLayers(); j++) {
+			if (sharedMemoryPerPartitionPerThread[omp_get_thread_num()][i][j] == true) {
+				validArrayPerThread[omp_get_thread_num()][i] += sourceG->getSharedParam(j);
 			}
 		}
 	}
-	} // pragma
 }
 
 bool InferenceRate::partitionsFitDevices(const int *p, int *sourceMem, bool openmp) {
@@ -979,11 +1016,9 @@ bool InferenceRate::validPartitioning(const int *p) {
 			cout << "\n sourceMem could not be allocated! \n";
 			exit(EXIT_FAILURE);	
 		}
-#		pragma omp parallel for num_threads(getNumberOfThreads())
 		for (int a = 0; a < getNumberOfPartitions(); a++) {
-			sourceMem[a] = validArray[a];
+			sourceMem[a] = validArrayPerThread[omp_get_thread_num()][a];
 		}
-
 		// Check if every partition fits to devices
 		return partitionsFitDevices(p, sourceMem, false);
 	}
@@ -1092,6 +1127,10 @@ bool InferenceRate::diffValidPartitioning(int *partitioning,
 
 int InferenceRate::getValidArray(int i) const {
 	return validArray[i];
+}
+
+int InferenceRate::getValidArrayPerThread(int t, int i) const {
+	return validArrayPerThread[t][i];
 }
 
 int InferenceRate::getValidIndex(int i) const {
@@ -1236,6 +1275,15 @@ InferenceRate::~InferenceRate() {
 		free(validArray);
 		validArray = NULL;
 	}
+    if (validArrayPerThread != NULL) {
+            for (int i = 0; i < getNumberOfThreads(); i++) {
+                    if (validArrayPerThread[i] != NULL) {
+                            free(validArrayPerThread[i]);
+                    }
+            }
+            free(validArrayPerThread);
+            validArrayPerThread = NULL;
+    }
 	if (validIndexes != NULL) {
 		free(validIndexes);
 		validIndexes = NULL;
@@ -1305,7 +1353,21 @@ InferenceRate::~InferenceRate() {
 		free(connectionMatrixInferenceRatePerThread);
 		connectionMatrixInferenceRatePerThread = NULL;
 	}		
-
+   if (sharedMemoryPerPartitionPerThread != NULL) {
+            for (int t = 0; t < getNumberOfThreads(); t++) {
+                    if (sharedMemoryPerPartitionPerThread[t] != NULL) {
+                            for (int i = 0; i < getNumberOfPartitions(); i++) {
+                                    if (sharedMemoryPerPartitionPerThread[t][i] != NULL) {
+                                            free(sharedMemoryPerPartitionPerThread[t][i]);
+                                    }
+                            }
+                            free(sharedMemoryPerPartitionPerThread[t]);
+                            sharedMemoryPerPartitionPerThread[t] = NULL;
+                    }
+            }
+            free(sharedMemoryPerPartitionPerThread);
+            sharedMemoryPerPartitionPerThread = NULL;
+    }
 	delete partitionGraph;
 	if (partitionGraphPerThread != NULL) {
 		for (int i = 0; i < getNumberOfThreads(); i++) {

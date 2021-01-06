@@ -318,7 +318,10 @@ bool GenericPartitioningAlgorithm::findBestMove(Move_t &move, double &cost, int 
 			}
 		}
 	}
-	//cout << "\n findBestMove: m.a: " << move.a << " m.b: " << move.b << " cost: " << cost << " found: " << found;
+	/*cout << "\n findBestMove: m.a: " << move.a << " m.b: " << move.b << " cost: " << cost << " m: " << move.move_b << " found: " << found;
+
+	for (int p = 0; p < getNumberOfPartitions(); p++)
+		cout << " m[" << p << "]: " << getValidArray(p);*/
 
 	/*if (same >= sameee) {
 		cout << "\n Sameee! : " << same;
@@ -402,13 +405,8 @@ bool GenericPartitioningAlgorithm::run(char *instance, bool multilevel, int same
 	struct timeval tim;
 	double initial, epoch_time;
 
-	if (bestC >=0) {
-		fprintf(wcost, " %f", bestC);
-		cout << "\n" << bestC;
-	} else {
-		fprintf(wcost, " %f", -bestC);
-		cout << "\n" << -bestC;
-	}
+	fprintf(wcost, " %f", bestC);
+	cout << "\n" << bestC;
 
 	/* Cycle through epochs. */
 	while(bestPartitionModified) { 
@@ -466,9 +464,8 @@ bool GenericPartitioningAlgorithm::run(char *instance, bool multilevel, int same
 			validPartitioning(currentPartitioning);
 
 			/* Save best */
-			if (cost <= bestC) {
-				// TODO: You can do an epoch stabilization here!
-				if (cost < bestC && multilevel == false) {
+			if (/*cost <= bestC*/ (objFunction == 0 && cost <= bestC) || (objFunction == 1 && cost >= bestC)) {
+				if ((objFunction == 0 && bestC / cost > 1.05) || (objFunction == 1 && bestC / cost < 0.95) && multilevel == false) {
 					bestPartitionModified = true;
 				}
 				bestC = cost;
@@ -493,14 +490,8 @@ bool GenericPartitioningAlgorithm::run(char *instance, bool multilevel, int same
 
 		gettimeofday(&tim, NULL);
 		epoch_time = tim.tv_sec+(tim.tv_usec/1000000.0);
-		//cout << "\n  epoch: bestC: " << bestC << ", epoch time: " << (epoch_time - initial) / 3600 << "\n";
-		if (bestC >=0) {
-			fprintf(wcost, " %f", bestC);
-			cout << "\n" << bestC << ", epoch time: " << (epoch_time - initial) / 3600 << endl;
-		} else {
-			fprintf(wcost, " %f", -bestC);
-			cout << "\n" << -bestC << ", epoch time: " << (epoch_time - initial) / 3600 << endl;
-		}
+		fprintf(wcost, " %f", bestC);
+		cout << "\n" << bestC << ", epoch time: " << (epoch_time - initial) / 3600 << endl;
 	}
 	fprintf(wcost, "\n");
 	fclose(wcost);

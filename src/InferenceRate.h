@@ -45,6 +45,7 @@ public:
 	void computeDiffMemoryPerPartition(int *partitioning, unsigned node, unsigned k, unsigned originalNodePartition, unsigned original_k_Partition, int *sourceMem, bool singleOrSwap);
 
 	int getValidArray(int i) const;
+	int getValidArrayPerThread(int t, int i) const;
 	int getValidIndex(int i) const;
 	
 	~InferenceRate();
@@ -74,8 +75,11 @@ private:
 	//int *sourceMem;
 	int *sortedTargetMem;
 
+	int **validArrayPerThread; // OpenMP
+
 	// eliminates redundant memory by accounting for shared memory only once per partition
 	bool **sharedMemoryPerPartition;
+	bool ***sharedMemoryPerPartitionPerThread; // OpenMP
 
 	// in order to just update cost, thus calculating it faster	
 	double currentCost;

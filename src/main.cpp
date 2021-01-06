@@ -191,12 +191,12 @@ int main(int argc, char *argv[]) {
 			cout << "\n\nInitial partitioning:";
 
 			InferenceRate.printPartitioning(InferenceRate.getInitialPartitioning());
-			cout << "initialCost: " << -InferenceRate.computeCost(InferenceRate.getInitialPartitioning(), false, true) << "\n";
+			cout << "initialCost: " << InferenceRate.computeCost(InferenceRate.getInitialPartitioning(), false, true) << "\n";
 			if (c == 0)
 				cout << "initialCost (Nonredundant edges): " << InferenceRate.computeCost(InferenceRate.getInitialPartitioning(), false, true) << "\n";
 			int memoryValid = InferenceRate.validPartitioning(InferenceRate.getInitialPartitioning());
 			for (int i = 0; i < InferenceRate.getNumberOfPartitions(); i++) {
-				cout << "mem[" << i << "]: " << InferenceRate.getValidArray(i) << " ";
+				cout << "mem[" << i << "]: " << InferenceRate.getValidArrayPerThread(0, i) << " ";
 			}
 			cout << "\nmemoryValid: " << memoryValid << "\n\n" << endl;
 	
@@ -209,12 +209,12 @@ int main(int argc, char *argv[]) {
 
 			cout << "\nBest partitioning found:";
 			InferenceRate.printPartitioning(InferenceRate.getBestPartitioning());
-			cout << "bestCost: " << -InferenceRate.computeCost(InferenceRate.getBestPartitioning(), false, true) << "\n";
+			cout << "bestCost: " << InferenceRate.computeCost(InferenceRate.getBestPartitioning(), false, true) << "\n";
 			if (c == 0)
 				cout << "bestCost (Nonredundant edges): " << InferenceRate.computeCost(InferenceRate.getBestPartitioning(), false, true) << "\n";
 			memoryValid = InferenceRate.validPartitioning(InferenceRate.getBestPartitioning());
 			for (int i = 0; i < InferenceRate.getNumberOfPartitions(); i++) {
-				cout << "mem[" << i << "]: " << InferenceRate.getValidArray(i) << " ";
+				cout << "mem[" << i << "]: " << InferenceRate.getValidArrayPerThread(0, i) << " ";
 			}
 			cout << "\nmemoryValid: " << memoryValid << "\n\n";
 

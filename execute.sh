@@ -17,7 +17,7 @@ sourceGraph=LeNet-0604vertices_directed
 lockedInput=0
 
 # klpMode: KLPcomm, DN2PCIoTcomm or MDN2PCIoTcomm for communication reduction or KLPiR, DN2PCIoTiR or MDN2PCIoTiR for inference rate maximization, according to the chosen algorithm
-klpMode=MDN2PCIoTcomm
+klpMode=MDN2PCIoTiR
 
 # cores: number of executions
 cores=1
