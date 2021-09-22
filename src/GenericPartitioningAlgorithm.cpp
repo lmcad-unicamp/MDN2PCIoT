@@ -1,22 +1,21 @@
 /***************************************************************************
- *   Copyright (C) 2020 by Fabíola Martins Campos de Oliveira 		   	   *
- *   fabiola.bass@gmail.com			                           			   *
- *                       						   						   *
- *   This file is part of KLP, DN²PCIoT, and MDN²PCIoT.  				   *
- *                                      		   		   				   *
- *   KLP, DN²PCIoT, and MDN²PCIoT is free software: you can redistribute   *
- *   it and/or modify it under the terms of the GNU General Public License *
- *   as published by the Free Software Foundation, either version 3 of the * 
- *   License, or (at your option) any later version.				       *
- *									   									   *
- *   KLP, DN²PCIoT, and MDN²PCIoT is distributed in the hope that it will  *
- *   be useful,	but WITHOUT ANY WARRANTY; without even the implied 		   *	
- *   warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See * 
- *   the GNU General Public License for more details.			   		   *
- *									   									   *
+ *   Copyright (C) 2020 by Fabíola Martins Campos de Oliveira 		   *
+ *   fabiola.bass@gmail.com			                           *
+ *                       						   *
+ *   This file is part of MDN²PCIoT.  					   *
+ *                                      		   		   *
+ *   MDN²PCIoT is free software: you can redistribute it and/or modify	   *
+ *   it under the terms of the GNU General Public License as published by  *
+ *   the Free Software Foundation, either version 3 of the License, or     *
+ *   (at your option) any later version.				   *
+ *									   *
+ *   MDN²PCIoT is distributed in the hope that it will be useful,	   *
+ *   but WITHOUT ANY WARRANTY; without even the implied warranty of	   *
+ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the	   *
+ *   GNU General Public License for more details.			   *
+ *									   *
  *   You should have received a copy of the GNU General Public License     *
- *   long with KLP, DN²PCIoT, and MDN²PCIoT.  If not, see 				   *
- *   <http://www.gnu.org/licenses/>.     								   *
+ *   long with MDN²PCIoT.  If not, see <http://www.gnu.org/licenses/>.     *
  ***************************************************************************/
 
 #include <iostream>
@@ -32,7 +31,7 @@
 
 using namespace std;
 
-GenericPartitioningAlgorithm::GenericPartitioningAlgorithm(int nVertices, int nPartitions, bool movingNodes, bool exchangingNodes, int nThreads) : numberOfPartitions(nPartitions), considerMovingNodes(movingNodes), considerExchangingNodes(exchangingNodes), numberOfVertices(nVertices), numberOfThreads(nThreads) {
+GenericPartitioningAlgorithm::GenericPartitioningAlgorithm(int nVertices, int nPartitions, bool movingNodes, bool exchangingNodes, int nThreads, bool objFunc) : numberOfPartitions(nPartitions), considerMovingNodes(movingNodes), considerExchangingNodes(exchangingNodes), numberOfVertices(nVertices), numberOfThreads(nThreads), objFunction(objFunc) {
 
 	// if set is not used
 	releasedVertices = (bool *) malloc(getNumberOfVertices() * sizeof(bool));
@@ -81,6 +80,38 @@ GenericPartitioningAlgorithm::GenericPartitioningAlgorithm(int nVertices, int nP
 void GenericPartitioningAlgorithm::setForcedInputSize(int size) {
 	forcedInputSize = size;
 }
+
+/*int GenericPartitioningAlgorithm::getForcedInputSize() {
+	return forcedInputSize;
+}*/
+
+/*void GenericPartitioningAlgorithm::setNumberOfPartitions(int nPartitions) {
+	numberOfPartitions = nPartitions;
+}*/
+
+/*void GenericPartitioningAlgorithm::setNumberOfVertices(int nVertices) {
+	numberOfVertices = nVertices;
+}*/
+
+/*int GenericPartitioningAlgorithm::getNumberOfVertices() {
+	return numberOfVertices;
+}*/
+
+/*void GenericPartitioningAlgorithm::setConsiderMovingNodes(bool movingNodes) {
+	considerMovingNodes = movingNodes;
+}
+
+void GenericPartitioningAlgorithm::setConsiderExchangingNodes(bool exchangingNodes) {
+	considerExchangingNodes = exchangingNodes;
+}*/
+
+/*bool GenericPartitioningAlgorithm::getConsiderExchangingNodes() const {
+	return considerExchangingNodes;
+}
+
+bool GenericPartitioningAlgorithm::getConsiderMovingNodes() const {
+	return considerMovingNodes;
+}*/
 
 int GenericPartitioningAlgorithm::getCurrentPartitioning(int node) const {
 	return currentPartitioning[node];	
@@ -223,6 +254,8 @@ bool GenericPartitioningAlgorithm::findBestNodeExchange(NodeIndex_t node,
 }
 
 bool GenericPartitioningAlgorithm::findBestMove(Move_t &move, double &cost, int &thread, int samee, int sameee) {
+	//Move_t bestMove;
+	//double bestC;
 	bool found = false;
 	std::set<NodeIndex_t>::iterator it;
 	NodeIndex_t s;
@@ -330,6 +363,44 @@ bool GenericPartitioningAlgorithm::findBestMove(Move_t &move, double &cost, int 
 	return found;
 }
 
+
+/*void GenericPartitioningAlgorithm::performMove(int *partitioning, Move_t &m) {
+	if (m.move_a) partitioning[m.a] = m.a_to;
+	if (m.move_b) partitioning[m.b] = m.b_to;
+}
+
+void GenericPartitioningAlgorithm::lockNodes(Move_t &m) {
+	if (m.move_a)
+		//releasedNodes[m.a] = false;
+		releasedNodes.erase(m.a);
+	if (m.move_b)	
+		//releasedNodes[m.b] = false;
+		releasedNodes.erase(m.b);
+}
+
+void GenericPartitioningAlgorithm::releaseAllNodes() {
+	/*int i;
+
+	for (i = 0; i < getNumberOfVertices(); i++) {
+		releasedNodes[i] = true;
+	}*/
+
+    /* Add all node indices to released_nodes. */ 
+	/*for (NodeIndex_t i = 0; i < getNumberOfVertices(); i++) 
+    	releasedNodes.insert(i);
+}*/
+
+/*bool GenericPartitioningAlgorithm::empty() {
+	int i;
+
+	for (i = 0; i < getNumberOfVertices(); i++) {
+		if (releasedNodes[i] == true) {
+			return false;
+		}
+	}
+	return true;
+}*/
+
 const int *GenericPartitioningAlgorithm::getInitialPartitioning() const {
 	return initialPartitioning;
 }
@@ -405,8 +476,13 @@ bool GenericPartitioningAlgorithm::run(char *instance, bool multilevel, int same
 	struct timeval tim;
 	double initial, epoch_time;
 
+	//if (objFunction == 0) {
 	fprintf(wcost, " %f", bestC);
 	cout << "\n" << bestC;
+	/*} else {
+		fprintf(wcost, " %f", 1/bestC);
+		cout << "\n" << 1/bestC;
+	}*/
 
 	/* Cycle through epochs. */
 	while(bestPartitionModified) { 
@@ -490,8 +566,14 @@ bool GenericPartitioningAlgorithm::run(char *instance, bool multilevel, int same
 
 		gettimeofday(&tim, NULL);
 		epoch_time = tim.tv_sec+(tim.tv_usec/1000000.0);
+		//cout << "\n  epoch: bestC: " << bestC << ", epoch time: " << (epoch_time - initial) / 3600 << "\n";
+		//if (objFunction == 0) {
 		fprintf(wcost, " %f", bestC);
 		cout << "\n" << bestC << ", epoch time: " << (epoch_time - initial) / 3600 << endl;
+		/*} else {
+			fprintf(wcost, " %f", 1/bestC);
+			cout << "\n" << 1/bestC << ", epoch time: " << (epoch_time - initial) / 3600 << endl;
+		}*/
 	}
 	fprintf(wcost, "\n");
 	fclose(wcost);

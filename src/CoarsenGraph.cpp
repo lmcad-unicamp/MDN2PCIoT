@@ -1,22 +1,21 @@
 /***************************************************************************
- *   Copyright (C) 2020 by Fabíola Martins Campos de Oliveira 		   	   *
- *   fabiola.bass@gmail.com			                           			   *
- *                       						   						   *
- *   This file is part of KLP, DN²PCIoT, and MDN²PCIoT.  				   *
- *                                      		   		   				   *
- *   KLP, DN²PCIoT, and MDN²PCIoT is free software: you can redistribute   *
- *   it and/or modify it under the terms of the GNU General Public License *
- *   as published by the Free Software Foundation, either version 3 of the * 
- *   License, or (at your option) any later version.				       *
- *									   									   *
- *   KLP, DN²PCIoT, and MDN²PCIoT is distributed in the hope that it will  *
- *   be useful,	but WITHOUT ANY WARRANTY; without even the implied 		   *	
- *   warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See * 
- *   the GNU General Public License for more details.			   		   *
- *									   									   *
+ *   Copyright (C) 2020 by Fabíola Martins Campos de Oliveira 		   *
+ *   fabiola.bass@gmail.com			                           *
+ *                       						   *
+ *   This file is part of MDN²PCIoT.  					   *
+ *                                      		   		   *
+ *   MDN²PCIoT is free software: you can redistribute it and/or modify	   *
+ *   it under the terms of the GNU General Public License as published by  *
+ *   the Free Software Foundation, either version 3 of the License, or     *
+ *   (at your option) any later version.				   *
+ *									   *
+ *   MDN²PCIoT is distributed in the hope that it will be useful,	   *
+ *   but WITHOUT ANY WARRANTY; without even the implied warranty of	   *
+ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the	   *
+ *   GNU General Public License for more details.			   *
+ *									   *
  *   You should have received a copy of the GNU General Public License     *
- *   long with KLP, DN²PCIoT, and MDN²PCIoT.  If not, see 				   *
- *   <http://www.gnu.org/licenses/>.     								   *
+ *   long with MDN²PCIoT.  If not, see <http://www.gnu.org/licenses/>.     *
  ***************************************************************************/
 
 #include <iostream>
@@ -63,6 +62,13 @@ CoarsenGraph::CoarsenGraph(SourceGraph *sourceG, TargetGraph *tgtG, bool verb, c
 	} else {
 		granularityBalanceFactor = 0.25;
 	}
+
+	// 32 devices in the case of AlexNet
+	if (tgtG->getNumberOfVertices() < 32)
+		vertexGroupingLimit = granularityBalanceFactor * target->getMinMemory();
+	else 
+		// equivalent to METIS in the case of AlexNet (sum of the vertex sizes, which is equivalent to the sum of the memory required to store layer output data
+		vertexGroupingLimit = 833265; 
 
 	sourceCoarsenedGraph = (SourceGraph **) malloc(numberOfCoarsenedGraphs * sizeof(SourceGraph *));
 	if (sourceCoarsenedGraph == NULL) {
@@ -193,7 +199,7 @@ void CoarsenGraph::coarsenSourceGraph() {
 									}
 
 									// check if the matched vertex fits the memory of the device with the least amount of memory
-									if (sourceCoarsenedGraph[c]->getMemory(i) + sourceCoarsenedGraph[c]->getMemory(j) + shared <= (granularityBalanceFactor * target->getMinMemory())) {
+									if (sourceCoarsenedGraph[c]->getMemory(i) + sourceCoarsenedGraph[c]->getMemory(j) + shared <= (vertexGroupingLimit)) {
 										// match vertices i and j
 										sourceCoarsenedGraph[c]->setMatch(i, j);
 										sourceCoarsenedGraph[c]->setMap(i, j, map);
@@ -258,10 +264,10 @@ void CoarsenGraph::coarsenSourceGraph() {
 								shared += sourceCoarsenedGraph[c]->getSharedParam(layer); 
 							}
 						}
-//cout << "\n i: " << i << ", p[i]: " << p[i] << ", w: " << nodeAdj->w << ", p[nodeAdj->w]: " << p[nodeAdj->w] << ", memi: " << sourceCoarsenedGraph[c]->getMemory(i) << ", memadj: " << sourceCoarsenedGraph[c]->getMemory(nodeAdj->w) << ", shared: " << shared << ", cond: " << (granularityBalanceFactor * target->getMinMemory());
+//cout << "\n i: " << i << ", p[i]: " << p[i] << ", w: " << nodeAdj->w << ", p[nodeAdj->w]: " << p[nodeAdj->w] << ", memi: " << sourceCoarsenedGraph[c]->getMemory(i) << ", memadj: " << sourceCoarsenedGraph[c]->getMemory(nodeAdj->w) << ", shared: " << shared << ", cond: " << (vertexGroupingLimit);
 
 						// check if the matched vertex fits the memory of the device with the least amount of memory
-						if (sourceCoarsenedGraph[c]->getMemory(i) + sourceCoarsenedGraph[c]->getMemory(nodeAdj->w) + shared <= (granularityBalanceFactor * target->getMinMemory())) {
+						if (sourceCoarsenedGraph[c]->getMemory(i) + sourceCoarsenedGraph[c]->getMemory(nodeAdj->w) + shared <= (vertexGroupingLimit)) {
 							if (max < nodeAdj->edgeWeight) {
 								maxAdj = nodeAdj->w;
 								max = nodeAdj->edgeWeight;
@@ -281,14 +287,14 @@ void CoarsenGraph::coarsenSourceGraph() {
 						}
 
 						// check if the matched vertex fits the memory of the device with the least amount of memory
-						if (sourceCoarsenedGraph[c]->getMemory(i) + sourceCoarsenedGraph[c]->getMemory(nodeAdj->w) + shared <= (granularityBalanceFactor * target->getMinMemory())) {
+						if (sourceCoarsenedGraph[c]->getMemory(i) + sourceCoarsenedGraph[c]->getMemory(nodeAdj->w) + shared <= (vertexGroupingLimit)) {
 							if (nodeAdj->w == maxAdj && nodeAdj->edgeWeight == max) {	
 								sourceCoarsenedGraph[c]->setMatch(i, nodeAdj->w);
 								sourceCoarsenedGraph[c]->setEdgeMatch(nodeAdj);
 								sourceCoarsenedGraph[c]->setMap(i, nodeAdj->w, map);	
-								/*if (verb == true) {
+								if (verb == true) {
 									cout << "\ni: " << i << ", adj: " << nodeAdj->w << ", edgeW: " << nodeAdj->edgeWeight << ", srcMlvl: " << nodeAdj->sourceMlvl << ", map: " << map << ", mem: " << sourceCoarsenedGraph[c]->getMemory(i) + sourceCoarsenedGraph[c]->getMemory(nodeAdj->w) + shared;
-								}*/
+								}
 								map++;
 								break;
 							}
@@ -336,7 +342,7 @@ void CoarsenGraph::coarsenSourceGraph() {
 										}
 
 										// check if the matched vertex fits the memory of the device with the least amount of memory
-										if (sourceCoarsenedGraph[c]->getMemory(i) + sourceCoarsenedGraph[c]->getMemory(j) + shared <= (granularityBalanceFactor * target->getMinMemory())) {
+										if (sourceCoarsenedGraph[c]->getMemory(i) + sourceCoarsenedGraph[c]->getMemory(j) + shared <= (vertexGroupingLimit)) {
 											// match vertices i and j
 											sourceCoarsenedGraph[c]->setMatch(i, j);
 											sourceCoarsenedGraph[c]->setMap(i, j, map);

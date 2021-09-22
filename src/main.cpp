@@ -81,7 +81,7 @@ int main(int argc, char *argv[]) {
 
 	int partitioning[g.getNumberOfVertices()];
 
-	Comm initialP(&g, r.getTargetNumberOfVertices(), singleMove, swaps, &t, g.getNumberOfVertices(), forcedInput, initPart, argv[6], argv[4], numberOfThreads, false, partitioning, g.getNumberOfVertices(), false, partitioning);
+	Comm initialP(&g, r.getTargetNumberOfVertices(), singleMove, swaps, &t, g.getNumberOfVertices(), forcedInput, initPart, argv[6], argv[4], numberOfThreads, false, partitioning, g.getNumberOfVertices(), false, partitioning, 0);
 
 	//initialP.printPartitioning(initialP.getInitialPartitioning());
 	
@@ -98,10 +98,10 @@ int main(int argc, char *argv[]) {
 
 	int same, samee;
 	if (coarsenGraph.getCoarsenedGraph(0)->getNumberOfVertices() < 700) {
-		same = 300;
+		same = 50;
 		samee = strtol(argv[10], NULL, 10);
 	} else if (coarsenGraph.getCoarsenedGraph(0)->getNumberOfVertices() < 2500) {
-		same = 150;
+		same = 50;
 		samee = strtol(argv[10], NULL, 10);
 	} else {
 		same = strtol(argv[9], NULL, 10); // Before: 50;
@@ -139,11 +139,11 @@ int main(int argc, char *argv[]) {
 		// ----------------------//
 		// ----- Comm -----//
 		if ((strcmp(argv[5], "MDN2PCIoTcomm")) == 0) {
-			Comm Comm(coarsenGraph.getCoarsenedGraph(c), r.getTargetNumberOfVertices(), singleMove, swaps, &t, coarsenGraph.getCoarsenedGraph(c)->getNumberOfVertices(), forcedInput, initPart, argv[6], argv[4], numberOfThreads, multilevel, partitioning, nVertices, defPart, coarsenGraph.getDefinedPartitioning());
+			Comm Comm(coarsenGraph.getCoarsenedGraph(c), r.getTargetNumberOfVertices(), singleMove, swaps, &t, coarsenGraph.getCoarsenedGraph(c)->getNumberOfVertices(), forcedInput, initPart, argv[6], argv[4], numberOfThreads, multilevel, partitioning, nVertices, defPart, coarsenGraph.getDefinedPartitioning(), 0);
 
 			//cout << "\n nVertices: " << nVertices;
 
-			cout << "\nMDN2PCIoTcomm c: " << c << " numberOfVertices: " << coarsenGraph.getCoarsenedGraph(c)->getNumberOfVertices() << " numberOfEdges: " << coarsenGraph.getCoarsenedGraph(c)->getNumberOfEdges();
+			cout << "\nMDN2PCIoTcomm c: " << c - 1 << " numberOfVertices: " << coarsenGraph.getCoarsenedGraph(c)->getNumberOfVertices() << " numberOfEdges: " << coarsenGraph.getCoarsenedGraph(c)->getNumberOfEdges();
 			//cout << "\ninitPart: " << ;
 
 			cout << "\n\nInitial partitioning: \n";
@@ -184,9 +184,9 @@ int main(int argc, char *argv[]) {
 		// ----------------------------//
 		// ----- InferenceRate -----//
 		} else if ((strcmp(argv[5], "MDN2PCIoTiR")) == 0) {
-			InferenceRate InferenceRate(coarsenGraph.getCoarsenedGraph(c), r.getTargetNumberOfVertices(), singleMove, swaps, &t, coarsenGraph.getCoarsenedGraph(c)->getNumberOfVertices(), forcedInput, initPart, argv[6], argv[4], numberOfThreads, multilevel, partitioning, nVertices);
+			InferenceRate InferenceRate(coarsenGraph.getCoarsenedGraph(c), r.getTargetNumberOfVertices(), singleMove, swaps, &t, coarsenGraph.getCoarsenedGraph(c)->getNumberOfVertices(), forcedInput, initPart, argv[6], argv[4], numberOfThreads, multilevel, partitioning, nVertices, 1);
 
-			cout << "\nMDN2PCIoTiR c: " << c << " numberOfVertices: " << coarsenGraph.getCoarsenedGraph(c)->getNumberOfVertices() << " numberOfEdges: " << coarsenGraph.getCoarsenedGraph(c)->getNumberOfEdges();
+			cout << "\nMDN2PCIoTiR c: " << c - 1 << " numberOfVertices: " << coarsenGraph.getCoarsenedGraph(c)->getNumberOfVertices() << " numberOfEdges: " << coarsenGraph.getCoarsenedGraph(c)->getNumberOfEdges();
 
 			cout << "\n\nInitial partitioning:";
 
@@ -226,3 +226,4 @@ int main(int argc, char *argv[]) {
 
 	return 0;
 }
+

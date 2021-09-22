@@ -1,22 +1,21 @@
 /***************************************************************************
- *   Copyright (C) 2020 by Fabíola Martins Campos de Oliveira 		   	   *
- *   fabiola.bass@gmail.com			                           			   *
- *                       						   						   *
- *   This file is part of KLP, DN²PCIoT, and MDN²PCIoT.  				   *
- *                                      		   		   				   *
- *   KLP, DN²PCIoT, and MDN²PCIoT is free software: you can redistribute   *
- *   it and/or modify it under the terms of the GNU General Public License *
- *   as published by the Free Software Foundation, either version 3 of the * 
- *   License, or (at your option) any later version.				       *
- *									   									   *
- *   KLP, DN²PCIoT, and MDN²PCIoT is distributed in the hope that it will  *
- *   be useful,	but WITHOUT ANY WARRANTY; without even the implied 		   *	
- *   warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See * 
- *   the GNU General Public License for more details.			   		   *
- *									   									   *
+ *   Copyright (C) 2020 by Fabíola Martins Campos de Oliveira 		   *
+ *   fabiola.bass@gmail.com			                           *
+ *                       						   *
+ *   This file is part of MDN²PCIoT.  					   *
+ *                                      		   		   *
+ *   MDN²PCIoT is free software: you can redistribute it and/or modify	   *
+ *   it under the terms of the GNU General Public License as published by  *
+ *   the Free Software Foundation, either version 3 of the License, or     *
+ *   (at your option) any later version.				   *
+ *									   *
+ *   MDN²PCIoT is distributed in the hope that it will be useful,	   *
+ *   but WITHOUT ANY WARRANTY; without even the implied warranty of	   *
+ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the	   *
+ *   GNU General Public License for more details.			   *
+ *									   *
  *   You should have received a copy of the GNU General Public License     *
- *   long with KLP, DN²PCIoT, and MDN²PCIoT.  If not, see 				   *
- *   <http://www.gnu.org/licenses/>.     								   *
+ *   long with MDN²PCIoT.  If not, see <http://www.gnu.org/licenses/>.     *
  ***************************************************************************/
 
 #ifndef INFERENCERATE_H
@@ -29,10 +28,12 @@
 class InferenceRate : public GenericPartitioningAlgorithm {
 
 public:
-	InferenceRate(SourceGraph *srcG, int nPartitions, bool movingNodes, bool exchangingNodes, TargetGraph *tgtG, int nVertices, int forcedInput, bool initPart, char *verbose, char *initPartFile, int numberOfThreads, bool multilevel, int *multilevelPart, int higherLevelNumberOfVertices);
+	InferenceRate(SourceGraph *srcG, int nPartitions, bool movingNodes, bool exchangingNodes, TargetGraph *tgtG, int nVertices, int forcedInput, bool initPart, char *verbose, char *initPartFile, int numberOfThreads, bool multilevel, int *multilevelPart, int higherLevelNumberOfVertices, bool objFunc);
 
 	/* Returns the cost of partition the graph with partitioning p. */
 	virtual double computeCost(const int *partitioning, bool openmp, bool nonredundantEdges);
+	//virtual double computeDiffCost(int *partitioning, unsigned node, unsigned k, unsigned originalNodePartition, unsigned original_k_Partition);
+	//virtual void reCost(int *partitioning);
 
 	/* Returns true if the partitioning is valid, false otherwise. */
 	virtual bool validPartitioning(const int *partitioning);
@@ -83,6 +84,9 @@ private:
 
 	// in order to just update cost, thus calculating it faster	
 	double currentCost;
+	bool *nodeLayer;
+	bool *nodeLayerMinus1;
+	bool *iLayer;
 
 	// eliminates redundant edges (edges that come from the same vertex and go to the same partition)
 	SourceGraph *partitionGraph;
